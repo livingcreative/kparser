@@ -15,7 +15,7 @@
 #pragma once
 #include <vector>
 
-namespace k_scanner
+namespace k_parser
 {
     //
     //  common types
@@ -24,7 +24,7 @@ namespace k_scanner
     typedef SourceSize SourcePosition; // position inside source text
     typedef SourceSize SourceLength;   // number of characters in source text
 
-    
+
     // source token - character sequence location and count inside source
     struct SourceToken
     {
@@ -43,27 +43,74 @@ namespace k_scanner
     };
 
 
+    // handy template class for passing static/dynamic arrays with known fixed size
+    template <typename T>
+    class FixedArray
+    {
+    public:
+        FixedArray() :
+            p_items(nullptr),
+            p_count(0)
+        {}
+
+        template <size_t length>
+        FixedArray(T (&items)[length]) :
+            p_items(items),
+            p_count(length)
+        {}
+
+        FixedArray(T *items, size_t count) :
+            p_items(items),
+            p_count(count)
+        {}
+
+        T& operator[](size_t index) { return p_items[index]; }
+        T& operator[](size_t index) const { return p_items[index]; }
+        size_t count() const { return p_count; }
+
+        T* begin() { return p_items; }
+        T* end() { return p_items + p_count; }
+
+        T* begin() const { return p_items; }
+        T* end() const { return p_items + p_count; }
+
+    private:
+        T      *p_items;
+        size_t  p_count;
+    };
+
+
     // token (sequence of characters, sort of string)
     template <typename T>
     struct Token
     {
+        // construct empty token
         Token() :
             Text(nullptr),
             Length(0)
         {}
 
+        // construct token from constant literal string
+        template <size_t length>
+        Token(const T (&text)[length]) :
+            Text(text),
+            Length(length - 1)
+        {}
+
+        // construct token from given text and length
         Token(const T *text, SourceSize length) :
             Text(text),
             Length(length)
         {}
 
+        // construct token from given source text and SourceToken
         Token(const T *source, const SourceToken &token) :
             Text(source + token.Position),
             Length(token.Length)
         {}
 
-        const T    *Text;            // pointer to characters
-        SourceSize  Length;          // length
+        const T    *Text;
+        SourceSize  Length;
     };
 
 
@@ -173,6 +220,11 @@ namespace k_scanner
     class Scanner
     {
     public:
+        typedef T char_t;
+        typedef Tsource source_t;
+        typedef Token<T> token_t;
+
+    public:
         Scanner(Tsource &source);
 
     protected:
@@ -238,9 +290,22 @@ namespace k_scanner
         static bool NotMatch(ScanResult result) { return result == srNoMatch; }
 
         template <typename Tc>
-        static inline ScanResult AnyMatch(Tc callbacks[], size_t count, SourceToken &token);
+        static ScanResult AnyMatch(SourceToken &token, Tc func)
+        {
+            return func(token);
+        }
 
-        Token<T> SourceTokenToToken(const SourceToken &token) const
+        template <typename Tc, typename... Args>
+        static ScanResult AnyMatch(SourceToken &token, Tc first, Args... args)
+        {
+            auto result = first(token);
+            if (result == srNoMatch) {
+                result = AnyMatch(token, args...);
+            }
+            return result;
+        }
+
+        token_t SourceTokenToToken(const SourceToken &token) const
         {
             return p_source.SourceTokenToToken(token);
         }
@@ -262,14 +327,14 @@ namespace k_scanner
         }
 
         bool Check(T c, bool increment = true);
-        bool Check(const Token<T> &s, bool increment = true);
+        bool Check(const token_t &s, bool increment = true);
 
-        static const int NO_MATCH = 1;
+        static const int NO_MATCH = -1;
 
-        int CheckAny(const Token<T> &characters, bool increment = true);
-        bool CheckAny(const Token<T> &characters, SourceToken &token, bool increment = true);
-        int CheckAny(const Token<T> *compounds, size_t count, int &length, bool increment = true);
-        bool CheckAny(const Token<T> *compounds, size_t count, SourceToken &token, bool increment = true);
+        int CheckAny(const token_t &characters, bool increment = true);
+        bool CheckAny(const token_t &characters, SourceToken &token, bool increment = true);
+        int CheckAny(const FixedArray<token_t> &compounds, int &length, bool increment = true);
+        bool CheckAny(const FixedArray<token_t> &compounds, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
         bool GetCharToken(bool nextline, Tinner inner, SourceToken &token, bool increment = true);
@@ -281,13 +346,13 @@ namespace k_scanner
         ScanResult FromSetWhile(const CharSet &from, const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
-        ScanResult FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
+        ScanResult FromTokenWhile(const token_t &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
-        ScanResult FromTokenWhile(const Token<T> from[], size_t count, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
+        ScanResult FromTokenWhile(const FixedArray<token_t> from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
-        ScanResult FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment = true);
+        ScanResult FromTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment = true);
 
     private:
         // template ugly "magic" for allowing to pass lambda and nullptr values
@@ -331,7 +396,7 @@ namespace k_scanner
             return 0;
         }
 
-        char c = source.CharCurrent();
+        auto c = source.CharCurrent();
         SourceLength brk = 0;
 
         if (c == '\r') {
@@ -352,20 +417,6 @@ namespace k_scanner
         p_source(source),
         p_lines(0)
     { }
-
-    template <typename T, typename Tsource, typename Tchecker>
-    template <typename Tc>
-    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::AnyMatch(Tc callbacks[], size_t count, SourceToken &token)
-    {
-        for (size_t n = 0; n < count; ++n) {
-            auto match = callbacks[n](token);
-            if (Match(match)) {
-                return match;
-            }
-        }
-
-        return srNoMatch;
-    }
 
     template <typename T, typename Tsource, typename Tchecker>
     bool Scanner<T, Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline)
@@ -407,7 +458,7 @@ namespace k_scanner
     }
 
     template <typename T, typename Tsource, typename Tchecker>
-    bool Scanner<T, Tsource, Tchecker>::Check(const Token<T> &s, bool increment)
+    bool Scanner<T, Tsource, Tchecker>::Check(const token_t &s, bool increment)
     {
         bool result =
             HasCharacters(s.Length) &&
@@ -425,22 +476,19 @@ namespace k_scanner
     }
 
     template <typename T, typename Tsource, typename Tchecker>
-    int Scanner<T, Tsource, Tchecker>::CheckAny(const Token<T> &characters, bool increment)
+    int Scanner<T, Tsource, Tchecker>::CheckAny(const token_t &characters, bool increment)
     {
-        int result = 0;
-
         for (auto n = 0; n < characters.Length; ++n) {
             if (Check(characters.Text[n], increment)) {
-                return result;
+                return n;
             }
-            ++result;
         }
 
         return NO_MATCH;
     }
 
     template <typename T, typename Tsource, typename Tchecker>
-    bool Scanner<T, Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, bool increment)
+    bool Scanner<T, Tsource, Tchecker>::CheckAny(const token_t &characters, SourceToken &token, bool increment)
     {
         auto pos = p_source.Position();
         auto result = CheckAny(characters, increment) != NO_MATCH;
@@ -451,32 +499,30 @@ namespace k_scanner
     }
 
     template <typename T, typename Tsource, typename Tchecker>
-    int Scanner<T, Tsource, Tchecker>::CheckAny(const Token<T> *compounds, size_t count, int &length, bool increment)
+    int Scanner<T, Tsource, Tchecker>::CheckAny(const FixedArray<token_t> &compounds, int &length, bool increment)
     {
-        int result = 0;
         length = 0;
 
-        for (size_t n = 0; n < count; ++n) {
-            if (Check(*compounds, increment)) {
-                length = compounds->Length;
-                return result;
+        for (size_t n = 0; n < compounds.count(); ++n) {
+            auto &c = compounds[n];
+            if (Check(c, increment)) {
+                length = c.Length;
+                return n;
             }
-            ++result;
-            ++compounds;
         }
 
         return NO_MATCH;
     }
 
     template <typename T, typename Tsource, typename Tchecker>
-    bool Scanner<T, Tsource, Tchecker>::CheckAny(const Token<T> *compounds, size_t count, SourceToken &token, bool increment)
+    bool Scanner<T, Tsource, Tchecker>::CheckAny(const FixedArray<token_t> &compounds, SourceToken &token, bool increment)
     {
         auto length = 0;
         auto pos = p_source.Position();
 
-        bool result = CheckAny(compounds, count, length, increment) != NO_MATCH;
+        bool result = CheckAny(compounds, length, increment) != NO_MATCH;
 
-        token = TSourceToken(pos, length);
+        token = SourceToken(pos, length);
 
         return result;
     }
@@ -551,7 +597,7 @@ namespace k_scanner
 
     template <typename T, typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTokenWhile(const token_t &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
         token = SourceToken(p_source.Position());
 
@@ -579,13 +625,13 @@ namespace k_scanner
 
     template <typename T, typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTokenWhile(const Token<T> from[], size_t count, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTokenWhile(const FixedArray<token_t> from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
         auto result = srNoMatch;
 
-        for (size_t n = 0; n < count; ++n) {
+        for (auto &&f : from) {
             result = FromTokenWhile(
-                *tok++, whileset, multiline, inner,
+                f, whileset, multiline, inner,
                 notemptywhile, token, increment
             );
 
@@ -599,7 +645,7 @@ namespace k_scanner
 
     template <typename T, typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
+    typename Scanner<T, Tsource, Tchecker>::ScanResult Scanner<T, Tsource, Tchecker>::FromTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
     {
         token = SourceToken(p_source.Position());
 
