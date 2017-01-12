@@ -231,14 +231,14 @@ namespace k_csparser
                     bool isstring = Match(AnyMatch(
                         tok,
 
-                        [this](auto t) {
+                        [this](auto &t) {
                             return ScanString(
                                 [this]() { return InterpolationInnerScan(true, false); },
                                 t
                             );
                         },
 
-                        [this](auto t) {
+                        [this](auto &t) {
                             return ScanVerbatimString(
                                 [this]() { return InterpolationInnerScan(false, true); },
                                 t
@@ -390,8 +390,8 @@ namespace k_csparser
     {
         return Match(AnyMatch(
             token,
-            [this](auto token) { return FromTokenWhile(L"//", p_all, false, nullptr, false, token); },
-            [this](auto token) { return FromTo(L"/*", L"*/", true, nullptr, false, token); }
+            [this](auto &t) { return FromTokenWhile(L"//", p_all, false, nullptr, false, t); },
+            [this](auto &t) { return FromTo(L"/*", L"*/", true, nullptr, false, t); }
         ));
     }
 
