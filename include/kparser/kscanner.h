@@ -315,7 +315,7 @@ namespace k_parser
 
         bool HasCharacters(SourceLength count) const
         {
-            return count < (p_source.Length() - p_source.Position());
+            return count <= (p_source.Length() - p_source.Position());
         }
 
         bool SkipToToken(SourceToken &token, bool nextline = true);
