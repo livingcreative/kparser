@@ -43,6 +43,18 @@ namespace k_parser
     };
 
 
+    struct IncrementalScanData
+    {
+        IncrementalScanData() :
+            Current(0),
+            NestingLevel(0)
+        {}
+
+        int Current;
+        int NestingLevel;
+    };
+
+
     // handy template class for passing static/dynamic arrays with known fixed size
     template <typename T>
     class FixedArray
@@ -305,6 +317,11 @@ namespace k_parser
             return result;
         }
 
+        bool StartsWith(const SourceToken &token, const token_t &sequence);
+        int StartsWith(const SourceToken &token, const FixedArray<token_t> &sequences);
+        bool EndsWith(const SourceToken &token, const token_t &sequence);
+        int EndsWith(const SourceToken &token, const FixedArray<token_t> &sequences);
+
         token_t SourceTokenToToken(const SourceToken &token) const
         {
             return p_source.SourceTokenToToken(token);
@@ -425,6 +442,52 @@ namespace k_parser
     { }
 
     template <typename T, typename Tsource, typename Tchecker>
+    bool Scanner<T, Tsource, Tchecker>::StartsWith(const SourceToken &token, const token_t &sequence)
+    {
+        auto tok = SourceTokenToToken(token);
+        bool result =
+            tok.Length >= sequence.Length &&
+            memcmp(tok.Text, sequence.Text, sequence.Length * sizeof(T)) == 0;
+        return result;
+    }
+
+    template <typename T, typename Tsource, typename Tchecker>
+    int Scanner<T, Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<token_t> &sequences)
+    {
+        for (size_t n = 0; n < sequences.count(); ++n) {
+            auto &s = sequences[n];
+            if (StartsWith(token, s)) {
+                return int(n);
+            }
+        }
+
+        return NO_MATCH;
+    }
+
+    template <typename T, typename Tsource, typename Tchecker>
+    bool Scanner<T, Tsource, Tchecker>::EndsWith(const SourceToken &token, const token_t &sequence)
+    {
+        auto tok = SourceTokenToToken(token);
+        bool result =
+            tok.Length >= sequence.Length &&
+            memcmp(tok.Text + tok.Length - sequence.Length, sequence.Text, sequence.Length * sizeof(T)) == 0;
+        return result;
+    }
+
+    template <typename T, typename Tsource, typename Tchecker>
+    int Scanner<T, Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<token_t> &sequences)
+    {
+        for (size_t n = 0; n < sequences.count(); ++n) {
+            auto &s = sequences[n];
+            if (EndsWith(token, s)) {
+                return int(n);
+            }
+        }
+
+        return NO_MATCH;
+    }
+
+    template <typename T, typename Tsource, typename Tchecker>
     bool Scanner<T, Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline)
     {
         token = SourceToken(p_source.Position());
@@ -513,7 +576,7 @@ namespace k_parser
             auto &c = compounds[n];
             if (Check(c, increment)) {
                 length = c.Length;
-                return n;
+                return int(n);
             }
         }
 
