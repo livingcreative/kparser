@@ -107,7 +107,7 @@ namespace k_csparser
         token_t p_escapes[9];     // all predefined escape sequences
         token_t p_compounds[21];  // all compound sequences
 
-        token_t p_keywords[774];
+        token_t p_keywords[75];
     };
 
 
@@ -664,4 +664,4 @@ namespace k_csparser
         return Match(result);
     }
 
-} // namespace k_csscanner
+} // namespace k_csparser
