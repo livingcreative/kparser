@@ -58,7 +58,8 @@ namespace k_cppparser
         enum class IncrementalCurrentType
         {
             None,
-            Comment,
+            MultilineComment,
+            SinglelineComment,
             Preprocessor
         };
 
@@ -69,7 +70,7 @@ namespace k_cppparser
         Token ScanToken(k_parser::IncrementalScanData &data);
 
         int IsEscape();
-        int IsPreprocessorLineBreak();
+        int IsLineBreakMerge();
 
         bool ScanIdent(k_parser::SourceToken &token);
         bool ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
@@ -95,7 +96,7 @@ namespace k_cppparser
         token_t p_hexprefixes[2]; // hexadecimal prefixes
         token_t p_escapes[9];     // all predefined escape sequences
         token_t p_compounds[24];  // all compound sequences
-        token_t p_pplbrk[4];      // all compound sequences which forms preprocessor line breaks
+        token_t p_linemerge[4];   // all compound sequences which forms skip over line breaks
 
         token_t p_keywords[75];   // all c++ keywords
     };
@@ -160,10 +161,10 @@ namespace k_cppparser
         p_compounds[22] = L"->";
         p_compounds[23] = L".*";
 
-        p_pplbrk[0] = L"\\\n\r";
-        p_pplbrk[1] = L"\\\r\n";
-        p_pplbrk[2] = L"\\\n";
-        p_pplbrk[3] = L"\\";
+        p_linemerge[0] = L"\\\n\r";
+        p_linemerge[1] = L"\\\r\n";
+        p_linemerge[2] = L"\\\n";
+        p_linemerge[3] = L"\\";
 
         int i = 0;
         p_keywords[i++] = L"alignas";
@@ -272,6 +273,16 @@ namespace k_cppparser
             } else {
                 token = ScanToken(data);
             }
+        } else {
+            switch (data.Current) {
+                case IncrementalCurrentType::Preprocessor:
+                    // empty line encountered while being inside preprocessor token,
+                    // finish token
+                    if (stok.Position == 0) {
+                        data.Current = int(IncrementalCurrentType::None);
+                    }
+                    break;
+            }
         }
         return result;
     }
@@ -284,7 +295,7 @@ namespace k_cppparser
 
         if (data.Current != int(IncrementalCurrentType::None)) {
             switch (data.Current) {
-                case IncrementalCurrentType::Comment: {
+                case IncrementalCurrentType::MultilineComment: {
                     token.Type = TokenType::Comment;
 
                     int level = 1;
@@ -297,17 +308,20 @@ namespace k_cppparser
                     break;
                 }
 
+                case IncrementalCurrentType::SinglelineComment:
                 case IncrementalCurrentType::Preprocessor: {
-                    token.Type = TokenType::Preprocessor;
+                    token.Type =
+                        data.Current == int(IncrementalCurrentType::SinglelineComment) ?
+                        TokenType::Comment : TokenType::Preprocessor;
 
                     int level = 1;
                     auto result = ContinueWhile(
                         p_all , false,
-                        [=]() { return IsPreprocessorLineBreak(); },
+                        [=]() { return IsLineBreakMerge(); },
                         stok
                     );
 
-                    if (!Match(result) || EndsWith(stok, p_pplbrk) == NO_MATCH) {
+                    if (!Match(result) || EndsWith(stok, p_linemerge) == NO_MATCH) {
                         data.Current = int(IncrementalCurrentType::None);
                     }
 
@@ -461,10 +475,10 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    int CPPScanner<Tsource>::IsPreprocessorLineBreak()
+    int CPPScanner<Tsource>::IsLineBreakMerge()
     {
         int length;
-        if (CheckAny(p_pplbrk, length, false) != NO_MATCH) {
+        if (CheckAny(p_linemerge, length, false) != NO_MATCH) {
             return length;
         }
 
@@ -481,14 +495,18 @@ namespace k_cppparser
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
     {
-        auto result = AnyMatch(
-            token,
-            [this](auto &t) { return FromTokenWhile(L"//", p_all, false, nullptr, false, t); },
-            [this](auto &t) { return FromTo(L"/*", L"*/", true, nullptr, false, t); }
-        );
+        auto result = FromTo(L"/*", L"*/", true, nullptr, false, token);
+        if (Match(result)) {
+            if (result == srMatchTrimmedEOF) {
+                data.Current = int(IncrementalCurrentType::MultilineComment);
+            }
+            return true;
+        }
 
-        if (result == srMatchTrimmedEOF) {
-            data.Current = int(IncrementalCurrentType::Comment);
+        result = FromTokenWhile(L"//", p_all, false, nullptr, false, token);
+
+        if (Match(result) && EndsWith(token, p_linemerge) != NO_MATCH) {
+            data.Current = int(IncrementalCurrentType::SinglelineComment);
         }
 
         return Match(result);
@@ -581,12 +599,11 @@ namespace k_cppparser
     bool CPPScanner<Tsource>::ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
     {
         auto result = Match(FromTokenWhile(
-            L"#", p_all, false,
-            [=]() { return IsPreprocessorLineBreak(); },
+            L"#", p_all, false, [=]() { return IsLineBreakMerge(); },
             false, token
         ));
 
-        if (result && EndsWith(token, p_pplbrk) != NO_MATCH) {
+        if (result && EndsWith(token, p_linemerge) != NO_MATCH) {
             data.Current = int(IncrementalCurrentType::Preprocessor);
         }
 
