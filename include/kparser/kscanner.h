@@ -28,71 +28,86 @@ namespace k_parser
     // source token - character sequence location and count inside source
     struct SourceToken
     {
+        // initialize empty source token
         SourceToken() :
             Position(0),
             Length(0)
         {}
 
+        // initialize source token with given position and length
         SourceToken(SourcePosition position, SourceLength length = 0) :
             Position(position),
             Length(length)
         {}
 
-        SourcePosition Position;
-        SourceLength   Length;
+        SourcePosition Position; // token position inside source
+        SourceLength   Length;   // token length
     };
 
 
+    // common incremental scanner data struct
+    //      holds intermediate scanner state
+    //      TODO: should this have state parameter type as a template parameter?
     struct IncrementalScanData
     {
+        // initialize empty structure
         IncrementalScanData() :
             Current(0),
             NestingLevel(0)
         {}
 
-        int Current;
-        int NestingLevel;
+        int Current;      // current scanner context
+        int NestingLevel; // current nesting level
     };
 
 
     // handy template class for passing static/dynamic arrays with known fixed size
+    //      T - type for array element
     template <typename T>
     class FixedArray
     {
     public:
+        // initialize empty array
         FixedArray() :
             p_items(nullptr),
             p_count(0)
         {}
 
+        // initialize from static C array with knwon length
         template <size_t length>
         FixedArray(T (&items)[length]) :
             p_items(items),
             p_count(length)
         {}
 
+        // initialize from items pointer and given item count
         FixedArray(T *items, size_t count) :
             p_items(items),
             p_count(count)
         {}
 
+        // access by index operators
         T& operator[](size_t index) { return p_items[index]; }
         T& operator[](size_t index) const { return p_items[index]; }
+        // get item count
         size_t count() const { return p_count; }
 
+        // iterators
         T* begin() { return p_items; }
         T* end() { return p_items + p_count; }
 
+        // const iterators
         T* begin() const { return p_items; }
         T* end() const { return p_items + p_count; }
 
     private:
-        T      *p_items;
-        size_t  p_count;
+        T      *p_items; // pointer to first item
+        size_t  p_count; // item count
     };
 
 
     // token (sequence of characters, sort of string)
+    //      T - type for character, like char or wchar_t
     template <typename T>
     struct Token
     {
@@ -106,7 +121,7 @@ namespace k_parser
         template <size_t length>
         Token(const T (&text)[length]) :
             Text(text),
-            Length(length - 1)
+            Length(length - 1) // NOTE: C strings have implicit 0 at the end, it's not included in length
         {}
 
         // construct token from given text and length
@@ -121,8 +136,8 @@ namespace k_parser
             Length(token.Length)
         {}
 
-        const T    *Text;
-        SourceSize  Length;
+        const T    *Text;   // pointer to first token character
+        SourceSize  Length; // character count
     };
 
 
@@ -131,6 +146,13 @@ namespace k_parser
     // -------------------------------------------------------------------------------
     //
     //  example class of scanner source interface
+    //      this class has no implementation!
+    //      it just shows what functions real ScannerSource class should implement
+    //      this could be done as abstract class, however that will harm overall performance
+    //      and it's even not required
+    //      since there's no way to declare "static" C++ interface without
+    //      virtual functions this declaration left here as an example
+    //      T - type for character, like char or wchar_t
 
     template <typename T>
     class ScannerSource
@@ -158,7 +180,7 @@ namespace k_parser
         // moves current Position by specified advance
         //      both negative and positive advances are allowed
         //      moving outside valid source text range is not allowed
-        //      Scanner won't asvance to invalid position except position
+        //      Scanner won't advance to invalid position except position
         //      where IsEnd will return true
         void Advance(SourcePosition advance = 1);
 
@@ -172,16 +194,22 @@ namespace k_parser
     // -------------------------------------------------------------------------------
     //
     //  basic scanner source from string implementation class
+    //      use this type as Tsource when source text presented as a string
+    //      T - type for character, like char or wchar_t
 
     template <typename T>
     class ScannerStringSource
     {
     public:
+        // initialize source with pointer to characters and its length
+        // position is always initialized to 0
         ScannerStringSource(const T *source, SourceLength length) :
             p_source(source),
             p_position(0),
             p_length(length)
         {}
+
+        // followings are ScannerSource implementation
 
         SourcePosition Position() const { return p_position; }
         SourceLength Length() const { return p_length; }
@@ -212,12 +240,18 @@ namespace k_parser
     // -------------------------------------------------------------------------------
     //
     //  basic scanner special characters checker class
+    //      this class is used for special characters check implementation
+    //      this one is default implementation with common special character set
 
     template <typename Tsource>
     class ScannerSpecialCharChecker
     {
     public:
+        // check if there's a space character at current source position
         static inline bool IsSpace(const Tsource &source);
+        // check if there's a line break character or sequence at current source position
+        //      return 0 if there's no line break or
+        //      length of line break sequence if there's one
         static inline SourceLength IsBreak(const Tsource &source);
     };
 
@@ -232,14 +266,17 @@ namespace k_parser
     class Scanner
     {
     public:
+        // template parameters type inner definitions
         typedef T char_t;
         typedef Tsource source_t;
         typedef Token<T> token_t;
 
     public:
+        // construct scanner for given source
         Scanner(Tsource &source);
 
     protected:
+        // scan result returned by some of scanner functions
         enum ScanResult
         {
             srNoMatch,         // no match
@@ -249,6 +286,7 @@ namespace k_parser
         };
 
         // simple class for holding set of character ranges
+        //      TODO: rework this to static array instead of std::vector
         class CharSet
         {
         private:
@@ -298,8 +336,16 @@ namespace k_parser
         };
 
     protected:
+        // handy checks for ScanResult value
         static bool Match(ScanResult result) { return result != srNoMatch; }
         static bool NotMatch(ScanResult result) { return result == srNoMatch; }
+
+        // variable arguments AnyMatch implementation
+        // tries to match one of given match functions
+        // returns ScanResult and token when matched
+        // basically handy way to implement "or" grammar checks, like
+        //      seqence1 || seqence2 || seqence3 ...
+        // where sequenceN is one of predefined scan functions
 
         template <typename Tc>
         static ScanResult AnyMatch(SourceToken &token, Tc func)
@@ -317,11 +363,42 @@ namespace k_parser
             return result;
         }
 
+        // variable arguments SequenceMatch implementaion
+        // tries to match all given match functions as one token
+        // returns Scanresult and token when matched
+        // basically handy way to implement checks for tokens composed of
+        // several checks in particular order
+
+        template <typename Tc>
+        static ScanResult SequenceMatch(SourceToken &token, Tc func)
+        {
+            return func(token);
+        }
+
+        template <typename Tc, typename... Args>
+        static ScanResult SequenceMatch(SourceToken &token, Tc first, Args... args)
+        {
+            auto result = first(token);
+            if (result == srMatch) {
+                SourceToken next;
+                result = SequenceMatch(next, args...);
+                if (result == srNoMatch) {
+                    p_source.Advance(-token.Length);
+                } else {
+                    token.Length += next.Length;
+                }
+            }
+            return result;
+        }
+
+        // helper functions to check if token starts or ends with one of given sequences
+
         bool StartsWith(const SourceToken &token, const token_t &sequence);
         int StartsWith(const SourceToken &token, const FixedArray<token_t> &sequences);
         bool EndsWith(const SourceToken &token, const token_t &sequence);
         int EndsWith(const SourceToken &token, const FixedArray<token_t> &sequences);
 
+        // helper function to convert SourceToken to token
         token_t SourceTokenToToken(const SourceToken &token) const
         {
             return p_source.SourceTokenToToken(token);
@@ -330,10 +407,15 @@ namespace k_parser
         T CharCurrent() const { return p_source.CharCurrent(); }
         SourceLength LineCount() const { return p_lines; }
 
+        // checks if there's at least count characters before source end
         bool HasCharacters(SourceLength count) const
         {
             return count <= (p_source.Length() - p_source.Position());
         }
+
+        // skip all whitespace (and optionally, line break) characters till start of the
+        // next possible token
+        // optionally returns skipped sequence as a source token
 
         bool SkipToToken(SourceToken &token, bool nextline = true);
 
@@ -343,8 +425,13 @@ namespace k_parser
             return SkipToToken(token, nextline);
         }
 
+        // check that there's a match of a character or sequence at current position
+
         bool Check(T c, bool increment = true);
         bool Check(const token_t &s, bool increment = true);
+
+        // following CheckAny functions are sort of high-level versions of Check to help
+        // perform checks against multiple characters or sequences
 
         static const int NO_MATCH = -1;
 
@@ -352,6 +439,12 @@ namespace k_parser
         bool CheckAny(const token_t &characters, SourceToken &token, bool increment = true);
         int CheckAny(const FixedArray<token_t> &compounds, int &length, bool increment = true);
         bool CheckAny(const FixedArray<token_t> &compounds, SourceToken &token, bool increment = true);
+
+        // following are core scan functions which perform scans for common patterns
+        // Tinner template parameter designates "inner scan" lambda function
+        // (thanks to awesome language design where you can't declare something you can actually use)
+        // inner scan function has following signature: int (void) and returns length of
+        // detected nested sequence (or 0 if there's no seqence detected)
 
         template <typename Tinner>
         bool GetCharToken(bool nextline, Tinner inner, SourceToken &token, bool increment = true);
