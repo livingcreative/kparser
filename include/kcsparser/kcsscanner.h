@@ -86,7 +86,7 @@ namespace k_csparser
         ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
 
         template <typename Tinner>
-        ScanResult ScanVerbatimString(Tinner inner, k_parser::SourceToken &token);
+        ScanResult ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token);
 
         bool ScanCharacter(k_parser::SourceToken &token);
         bool ScanIntegerPostfix();
@@ -103,11 +103,43 @@ namespace k_csparser
         CharSet p_alpha;          // alpha characters set (not exact, unicode range needs refinement)
         CharSet p_alphanum;       // alpha + numeric characters set
 
-        token_t p_hexprefixes[2]; // hexadecimal prefixes
-        token_t p_escapes[9];     // all predefined escape sequences
-        token_t p_compounds[21];  // all compound sequences
+        static token_t p_hexprefixes[2]; // hexadecimal prefixes
+        static token_t p_escapes[9];     // all predefined escape sequences
+        static token_t p_compounds[21];  // all compound sequences
 
-        token_t p_keywords[75];
+        static token_t p_keywords[75];
+    };
+
+
+    template <typename Tsource>
+    typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_hexprefixes[] = {
+        L"0x", L"0X"
+    };
+
+    template <typename Tsource>
+    typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_escapes[] = {
+        L"\\'",  L"\\\"", L"\\\\", L"\\t", L"\\r", L"\\n", L"\\b", L"\\f", L"\\0"
+    };
+
+    template <typename Tsource>
+    typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_compounds[] = {
+        L"<<=", L">>=",
+        L"==", L"!=", L"=>", L"&&", L"??", L"++", L"--", L"||", L">=", L"<=",
+        L"+=", L"-=", L"/=", L"*=", L"%=", L"&=", L"|=", L"^=", L"->"
+    };
+
+    template <typename Tsource>
+    typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_keywords[] = {
+        L"abstract", L"as", L"base", L"bool", L"break", L"byte", L"case", L"catch",
+        L"char", L"checked", L"class", L"const", L"continue", L"decimal", L"default",
+        L"delegate", L"do", L"double", L"else", L"enum", L"event", L"extern", L"false",
+        L"finally", L"float", L"for", L"foreach", L"get", L"goto", L"if", L"int",
+        L"interface", L"internal", L"is", L"lock", L"long", L"namespace", L"new", L"null",
+        L"object", L"operator", L"out", L"override", L"params", L"partial", L"private",
+        L"protected", L"public", L"readonly", L"ref", L"return", L"sbyte", L"set", L"short",
+        L"sizeof", L"static", L"string", L"struct", L"switch", L"this", L"throw", L"true",
+        L"try", L"typeof", L"uint", L"ulong", L"unchecked", L"unsafe", L"using", L"ushort",
+        L"var", L"virtual", L"void", L"while", L"yield"
     };
 
 
@@ -131,135 +163,13 @@ namespace k_csparser
 
         p_alphanum = CharSet(p_alpha);
         p_alphanum.add('0', '9');
-
-        p_hexprefixes[0] = L"0x";
-        p_hexprefixes[1] = L"0X";
-
-        p_escapes[0] = L"\\'";
-        p_escapes[1] = L"\\\"";
-        p_escapes[2] = L"\\\\";
-        p_escapes[3] = L"\\t";
-        p_escapes[4] = L"\\r";
-        p_escapes[5] = L"\\n";
-        p_escapes[6] = L"\\b";
-        p_escapes[7] = L"\\f";
-        p_escapes[8] = L"\\0";
-
-        p_compounds[0] = L"<<=";
-        p_compounds[1] = L">>=";
-        p_compounds[2] = L"==";
-        p_compounds[3] = L"!=";
-        p_compounds[4] = L"=>";
-        p_compounds[5] = L"&&";
-        p_compounds[6] = L"??";
-        p_compounds[7] = L"++";
-        p_compounds[8] = L"--";
-        p_compounds[9] = L"||";
-        p_compounds[10] = L">=";
-        p_compounds[11] = L"<=";
-        p_compounds[12] = L"+=";
-        p_compounds[13] = L"-=";
-        p_compounds[14] = L"/=";
-        p_compounds[15] = L"*=";
-        p_compounds[16] = L"%=";
-        p_compounds[17] = L"&=";
-        p_compounds[18] = L"|=";
-        p_compounds[19] = L"^=";
-        p_compounds[20] = L"->";
-
-        int i = 0;
-        p_keywords[i++] = L"abstract";
-        p_keywords[i++] = L"as";
-        p_keywords[i++] = L"base";
-        p_keywords[i++] = L"bool";
-        p_keywords[i++] = L"break";
-        p_keywords[i++] = L"byte";
-        p_keywords[i++] = L"case";
-        p_keywords[i++] = L"catch";
-        p_keywords[i++] = L"char";
-        p_keywords[i++] = L"checked";
-        p_keywords[i++] = L"class";
-        p_keywords[i++] = L"const";
-        p_keywords[i++] = L"continue";
-        p_keywords[i++] = L"decimal";
-        p_keywords[i++] = L"default";
-        p_keywords[i++] = L"delegate";
-        p_keywords[i++] = L"do";
-        p_keywords[i++] = L"double";
-        p_keywords[i++] = L"else";
-        p_keywords[i++] = L"enum";
-        p_keywords[i++] = L"event";
-        p_keywords[i++] = L"extern";
-        p_keywords[i++] = L"false";
-        p_keywords[i++] = L"finally";
-        p_keywords[i++] = L"float";
-        p_keywords[i++] = L"for";
-        p_keywords[i++] = L"foreach";
-        p_keywords[i++] = L"get";
-        p_keywords[i++] = L"goto";
-        p_keywords[i++] = L"if";
-        p_keywords[i++] = L"int";
-        p_keywords[i++] = L"interface";
-        p_keywords[i++] = L"internal";
-        p_keywords[i++] = L"is";
-        p_keywords[i++] = L"lock";
-        p_keywords[i++] = L"long";
-        p_keywords[i++] = L"namespace";
-        p_keywords[i++] = L"new";
-        p_keywords[i++] = L"null";
-        p_keywords[i++] = L"object";
-        p_keywords[i++] = L"operator";
-        p_keywords[i++] = L"out";
-        p_keywords[i++] = L"override";
-        p_keywords[i++] = L"params";
-        p_keywords[i++] = L"partial";
-        p_keywords[i++] = L"private";
-        p_keywords[i++] = L"protected";
-        p_keywords[i++] = L"public";
-        p_keywords[i++] = L"readonly";
-        p_keywords[i++] = L"ref";
-        p_keywords[i++] = L"return";
-        p_keywords[i++] = L"sbyte";
-        p_keywords[i++] = L"set";
-        p_keywords[i++] = L"short";
-        p_keywords[i++] = L"sizeof";
-        p_keywords[i++] = L"static";
-        p_keywords[i++] = L"string";
-        p_keywords[i++] = L"struct";
-        p_keywords[i++] = L"switch";
-        p_keywords[i++] = L"this";
-        p_keywords[i++] = L"throw";
-        p_keywords[i++] = L"true";
-        p_keywords[i++] = L"try";
-        p_keywords[i++] = L"typeof";
-        p_keywords[i++] = L"uint";
-        p_keywords[i++] = L"ulong";
-        p_keywords[i++] = L"unchecked";
-        p_keywords[i++] = L"unsafe";
-        p_keywords[i++] = L"using";
-        p_keywords[i++] = L"ushort";
-        p_keywords[i++] = L"var";
-        p_keywords[i++] = L"virtual";
-        p_keywords[i++] = L"void";
-        p_keywords[i++] = L"while";
-        p_keywords[i++] = L"yield";
     }
 
     template <typename Tsource>
     bool CSScanner<Tsource>::ReadToken(bool includespacers, Token &token)
     {
-        k_parser::SourceToken stok;
-        bool result = SkipToToken(stok);
-        if (result) {
-            if (includespacers && stok.Length > 0) {
-                token.Type = TokenType::Spacer;
-                token.SourceToken = stok;
-            } else {
-                IncrementalScanData data;
-                token = ScanToken(data);
-            }
-        }
-        return result;
+        IncrementalScanData data;
+        return ReadToken(includespacers, data, token);
     }
 
     template <typename Tsource>
@@ -299,6 +209,18 @@ namespace k_csparser
                     break;
                 }
 
+                case IncrementalCurrentType::VerbatimString: {
+                    token.Type = TokenType::String;
+
+                    int level = 1;
+                    auto result = ContinueTo(L"", L"\"", true, nullptr, false, stok, level);
+
+                    if (result != srMatchTrimmedEOF) {
+                        data.Current = int(IncrementalCurrentType::None);
+                    }
+
+                    break;
+                }
             }
 
             token.SourceToken = stok;
@@ -318,13 +240,8 @@ namespace k_csparser
             if (ScanIdent(stok)) {
                 token.Type = TokenType::Identifier;
 
-                for (size_t n = 0; n < sizeof(p_keywords) / sizeof(p_keywords[0]); ++n) {
-                    auto t = SourceTokenToToken(stok);
-                    auto &kw = p_keywords[n];
-                    if (t.Length == kw.Length && memcmp(t.Text, kw.Text, kw.Length * sizeof(char_t)) == 0) {
-                        token.Type = TokenType::Keyword;
-                        break;
-                    }
+                if (TokenCheckAny(stok, p_keywords) != NO_MATCH) {
+                    token.Type = TokenType::Keyword;
                 }
             }
         }
@@ -393,8 +310,9 @@ namespace k_csparser
                     );
                 },
 
-                [this](auto &t) {
+                [this, &data](auto &t) {
                     return ScanVerbatimString(
+                        data,
                         [this]() { return InterpolationInnerScan(false, true); },
                         t
                     );
@@ -423,7 +341,7 @@ namespace k_csparser
         // "verbatim" character can start string or @ident
         else if (c == '@')
         {
-            if (Match(ScanVerbatimString(nullptr, stok))) {
+            if (Match(ScanVerbatimString(data, nullptr, stok))) {
                 token.Type = TokenType::String;
             } else {
                 GetCharToken(false, nullptr, stok);
@@ -564,18 +482,25 @@ namespace k_csparser
 
     template <typename Tsource>
     template <typename Tinner>
-    typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(Tinner inner, k_parser::SourceToken &token)
+    typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token)
     {
         auto result = FromTo(L"@\"", L"\"", true, inner, false, token);
 
-        // continue with contigous double quoted strings only if there was full match
-        if (result == srMatch) {
-            SourceToken tok;
-            ScanResult next;
-            while (Match(next = FromTo(L"\"", L"\"", true, inner, false, tok))) {
-                result = next;
-                token.Length += tok.Length;
+        switch (result) {
+            // continue with contigous double quoted strings only if there was full match
+            case srMatch: {
+                SourceToken tok;
+                ScanResult next;
+                while (Match(next = FromTo(L"\"", L"\"", true, inner, false, tok))) {
+                    result = next;
+                    token.Length += tok.Length;
+                }
+                break;
             }
+
+            case srMatchTrimmedEOF:
+                data.Current = int(IncrementalCurrentType::VerbatimString);
+                break;
         }
 
         return result;
