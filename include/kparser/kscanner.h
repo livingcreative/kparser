@@ -439,7 +439,7 @@ namespace k_parser
         ScanResult FromTokenWhile(const token_t &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
-        ScanResult FromTokenWhile(const FixedArray<const token_t> from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
+        ScanResult FromTokenWhile(const FixedArray<const token_t> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
         template <typename Tinner>
         ScanResult FromTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment = true);
@@ -450,14 +450,12 @@ namespace k_parser
         template <typename Tc>
         struct caller
         {
-            static inline constexpr bool assigned(Tc callee) { return true; }
             static inline int call(Tc callee) { return callee(); }
         };
 
         template <>
         struct caller<decltype(nullptr)>
         {
-            static inline constexpr bool assigned(decltype(nullptr) callee) { return false; }
             static inline constexpr int call(decltype(nullptr) callee) { return 0; }
         };
 
@@ -748,9 +746,7 @@ namespace k_parser
         auto len = Tchecker::IsBreak(p_source);
 
         if (len == 0) {
-            if (caller<Tinner>::assigned(inner)) {
-                len = caller<Tinner>::call(inner);
-            }
+            len = caller<Tinner>::call(inner);
             if (len == 0 && p_source.IsEnd()) {
                 return false;
             }
@@ -901,7 +897,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const token_t> from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const token_t> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
         auto result = ScanResult::NoMatch;
 
