@@ -19,7 +19,7 @@ namespace k_cppparser
 {
 
     template <typename Tsource>
-    class CPPScanner : public k_parser::Scanner<wchar_t, Tsource>
+    class CPPScanner : public k_parser::Scanner<Tsource>
     {
     public:
         CPPScanner(Tsource &source);
@@ -87,162 +87,96 @@ namespace k_cppparser
         bool ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
 
     private:
-        CharSet p_all;            // all characters set
-        CharSet p_numeric;        // numeric [0 - 9] characters set
-        CharSet p_hexadecimal;    // hexadecimal [0 - 9, A - F, a - f] characters set
-        CharSet p_alpha;          // alpha characters set (not exact, unicode range needs refinement)
-        CharSet p_alphanum;       // alpha + numeric characters set
+        static const CharRange p_all[1];         // all characters set
+        static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
+        static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
+        static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
+        static const CharRange p_alphanum[5];    // alpha + numeric characters set
 
-        token_t p_hexprefixes[2]; // hexadecimal prefixes
-        token_t p_escapes[9];     // all predefined escape sequences
-        token_t p_compounds[24];  // all compound sequences
-        token_t p_linemerge[4];   // all compound sequences which forms skip over line breaks
+        static const token_t p_hexprefixes[2];   // hexadecimal prefixes
+        static const token_t p_escapes[9];       // all predefined escape sequences
+        static const token_t p_compounds[24];    // all compound sequences
+        static const token_t p_linemerge[4];     // all compound sequences which forms skip over line breaks
 
-        token_t p_keywords[75];   // all c++ keywords
+        static const token_t p_keywords[75];     // all c++ keywords
     };
 
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_all[] = {
+        { L'\x0001', L'\xFFFF' }
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_numeric[] = {
+        { '0', '9' }
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_hexadecimal[] = {
+        { '0', '9' },
+        { 'A', 'F' },
+        { 'a', 'f' }
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_alpha[] = {
+        { '_', '_' },
+        { 'A', 'Z' },
+        { 'a', 'z' },
+        // TODO: refine alpha range
+        { L'\x0100', L'\xFFFF' }
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_alphanum[] = {
+        { '_', '_' },
+        { 'A', 'Z' },
+        { 'a', 'z' },
+        { L'\x0100', L'\xFFFF' },
+        { '0', '9' }
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_hexprefixes[] = {
+        L"0x", L"0X"
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_escapes[] = {
+        L"\\'",  L"\\\"", L"\\\\", L"\\t", L"\\r", L"\\n", L"\\b", L"\\f", L"\\0"
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_compounds[] = {
+        L"<<=", L">>=", L"->*", L"...", L"==", L"!=", L"=>", L"&&", L"::", L"++",
+        L"--", L"||", L">=", L"<=", L"+=", L"-=", L"/=", L"*=", L"%=", L"&=",
+        L"|=", L"^=", L"->", L".*"
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_linemerge[] = {
+        L"\\\n\r", L"\\\r\n", L"\\\n", L"\\"
+    };
+
+    template <typename Tsource>
+    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_keywords[] = {
+        L"alignas", L"alignof", L"asm", L"auto", L"bool", L"break", L"case", L"catch",
+        L"char", L"char16_t", L"char32_t", L"class", L"const", L"constexpr", L"const_cast",
+        L"continue", L"decltype", L"default", L"delete", L"do", L"double", L"dynamic_cast",
+        L"else", L"enum", L"explicit", L"export", L"extern", L"false", L"final", L"float",
+        L"for", L"friend", L"goto", L"if", L"inline", L"int", L"long", L"mutable",
+        L"namespace", L"new", L"noexcept", L"nullptr", L"operator", L"override", L"private",
+        L"protected", L"public", L"register", L"reinterpret_cast", L"return", L"short",
+        L"signed", L"sizeof", L"static", L"static_assert", L"static_cast", L"struct",
+        L"switch", L"template", L"this", L"thread_local", L"throw", L"true", L"try",
+        L"typedef", L"typedid", L"typename", L"union", L"unsigned", L"using", L"virtual",
+        L"void", L"volatile", L"wchar_t", L"while"
+    };
 
     template <typename Tsource>
     CPPScanner<Tsource>::CPPScanner(Tsource &source) :
         Scanner(source)
-    {
-        p_all.add(L'\x0001', L'\xFFFF');
-
-        p_numeric.add('0', '9');
-
-        p_hexadecimal.add('0', '9');
-        p_hexadecimal.add('A', 'F');
-        p_hexadecimal.add('a', 'f');
-
-        p_alpha.add('_');
-        p_alpha.add('A', 'Z');
-        p_alpha.add('a', 'z');
-        // TODO: refine alpha range
-        p_alpha.add(L'\x0100', L'\xFFFF');
-
-        p_alphanum = CharSet(p_alpha);
-        p_alphanum.add('0', '9');
-
-        p_hexprefixes[0] = L"0x";
-        p_hexprefixes[1] = L"0X";
-
-        p_escapes[0] = L"\\'";
-        p_escapes[1] = L"\\\"";
-        p_escapes[2] = L"\\\\";
-        p_escapes[3] = L"\\t";
-        p_escapes[4] = L"\\r";
-        p_escapes[5] = L"\\n";
-        p_escapes[6] = L"\\b";
-        p_escapes[7] = L"\\f";
-        p_escapes[8] = L"\\0";
-
-        p_compounds[0] = L"<<=";
-        p_compounds[1] = L">>=";
-        p_compounds[2] = L"->*";
-        p_compounds[3] = L"...";
-        p_compounds[4] = L"==";
-        p_compounds[5] = L"!=";
-        p_compounds[6] = L"=>";
-        p_compounds[7] = L"&&";
-        p_compounds[8] = L"::";
-        p_compounds[9] = L"++";
-        p_compounds[10] = L"--";
-        p_compounds[11] = L"||";
-        p_compounds[12] = L">=";
-        p_compounds[13] = L"<=";
-        p_compounds[14] = L"+=";
-        p_compounds[15] = L"-=";
-        p_compounds[16] = L"/=";
-        p_compounds[17] = L"*=";
-        p_compounds[18] = L"%=";
-        p_compounds[19] = L"&=";
-        p_compounds[20] = L"|=";
-        p_compounds[21] = L"^=";
-        p_compounds[22] = L"->";
-        p_compounds[23] = L".*";
-
-        p_linemerge[0] = L"\\\n\r";
-        p_linemerge[1] = L"\\\r\n";
-        p_linemerge[2] = L"\\\n";
-        p_linemerge[3] = L"\\";
-
-        int i = 0;
-        p_keywords[i++] = L"alignas";
-        p_keywords[i++] = L"alignof";
-        p_keywords[i++] = L"asm";
-        p_keywords[i++] = L"auto";
-        p_keywords[i++] = L"bool";
-        p_keywords[i++] = L"break";
-        p_keywords[i++] = L"case";
-        p_keywords[i++] = L"catch";
-        p_keywords[i++] = L"char";
-        p_keywords[i++] = L"char16_t";
-        p_keywords[i++] = L"char32_t";
-        p_keywords[i++] = L"class";
-        p_keywords[i++] = L"const";
-        p_keywords[i++] = L"constexpr";
-        p_keywords[i++] = L"const_cast";
-        p_keywords[i++] = L"continue";
-        p_keywords[i++] = L"decltype";
-        p_keywords[i++] = L"default";
-        p_keywords[i++] = L"delete";
-        p_keywords[i++] = L"do";
-        p_keywords[i++] = L"double";
-        p_keywords[i++] = L"dynamic_cast";
-        p_keywords[i++] = L"else";
-        p_keywords[i++] = L"enum";
-        p_keywords[i++] = L"explicit";
-        p_keywords[i++] = L"export";
-        p_keywords[i++] = L"extern";
-        p_keywords[i++] = L"false";
-        p_keywords[i++] = L"final";
-        p_keywords[i++] = L"float";
-        p_keywords[i++] = L"for";
-        p_keywords[i++] = L"friend";
-        p_keywords[i++] = L"goto";
-        p_keywords[i++] = L"if";
-        p_keywords[i++] = L"inline";
-        p_keywords[i++] = L"int";
-        p_keywords[i++] = L"long";
-        p_keywords[i++] = L"mutable";
-        p_keywords[i++] = L"namespace";
-        p_keywords[i++] = L"new";
-        p_keywords[i++] = L"noexcept";
-        p_keywords[i++] = L"nullptr";
-        p_keywords[i++] = L"operator";
-        p_keywords[i++] = L"override";
-        p_keywords[i++] = L"private";
-        p_keywords[i++] = L"protected";
-        p_keywords[i++] = L"public";
-        p_keywords[i++] = L"register";
-        p_keywords[i++] = L"reinterpret_cast";
-        p_keywords[i++] = L"return";
-        p_keywords[i++] = L"short";
-        p_keywords[i++] = L"signed";
-        p_keywords[i++] = L"sizeof";
-        p_keywords[i++] = L"static";
-        p_keywords[i++] = L"static_assert";
-        p_keywords[i++] = L"static_cast";
-        p_keywords[i++] = L"struct";
-        p_keywords[i++] = L"switch";
-        p_keywords[i++] = L"template";
-        p_keywords[i++] = L"this";
-        p_keywords[i++] = L"thread_local";
-        p_keywords[i++] = L"throw";
-        p_keywords[i++] = L"true";
-        p_keywords[i++] = L"try";
-        p_keywords[i++] = L"typedef";
-        p_keywords[i++] = L"typedid";
-        p_keywords[i++] = L"typename";
-        p_keywords[i++] = L"union";
-        p_keywords[i++] = L"unsigned";
-        p_keywords[i++] = L"using";
-        p_keywords[i++] = L"virtual";
-        p_keywords[i++] = L"void";
-        p_keywords[i++] = L"volatile";
-        p_keywords[i++] = L"wchar_t";
-        p_keywords[i++] = L"while";
-    }
+    {}
 
     template <typename Tsource>
     bool CPPScanner<Tsource>::ReadToken(bool includespacers, Token &token)
@@ -301,7 +235,7 @@ namespace k_cppparser
                     int level = 1;
                     auto result = ContinueTo(L"", L"*/", true, nullptr, false, stok, level);
 
-                    if (result != srMatchTrimmedEOF) {
+                    if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
                     }
 
@@ -497,7 +431,7 @@ namespace k_cppparser
     {
         auto result = FromTo(L"/*", L"*/", true, nullptr, false, token);
         if (Match(result)) {
-            if (result == srMatchTrimmedEOF) {
+            if (result == ScanResult::MatchTrimmedEOF) {
                 data.Current = int(IncrementalCurrentType::MultilineComment);
             }
             return true;
