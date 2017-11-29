@@ -26,7 +26,7 @@ namespace k_csparser
 
         enum class TokenType
         {
-            Unknown,      // token haven't been scanned yet
+            None,         // token haven't been scanned yet or scan finished
             Identifier,   // any valid identifier
             Keyword,      // keyword (special identifiers)
             Number,       // any integer number, decimal or hexadecimal (might be incomplete)
@@ -43,13 +43,15 @@ namespace k_csparser
         struct Token
         {
             Token() :
-                Type(TokenType::Unknown)
+                Type(TokenType::None)
             {}
 
             Token(TokenType _type, const k_parser::SourceToken &_token) :
                 Type(_type),
                 SourceToken(_token)
             {}
+
+            operator bool() const { return Type != TokenType::None; }
 
             TokenType             Type;
             k_parser::SourceToken SourceToken;
@@ -63,8 +65,8 @@ namespace k_csparser
             VerbatimInterpolationString
         };
 
-        bool ReadToken(bool includespacers, Token &token);
-        bool ReadToken(bool includespacers, k_parser::IncrementalScanData &data, Token &token);
+        Token ReadToken(bool includespacers);
+        Token ReadToken(bool includespacers, k_parser::IncrementalScanData &data);
 
     private:
         Token ScanToken(k_parser::IncrementalScanData &data);
@@ -184,23 +186,23 @@ namespace k_csparser
     {}
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ReadToken(bool includespacers, Token &token)
+    typename CSScanner<Tsource>::Token CSScanner<Tsource>::ReadToken(bool includespacers)
     {
         IncrementalScanData data;
-        return ReadToken(includespacers, data, token);
+        return ReadToken(includespacers, data);
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data, Token &token)
+    typename CSScanner<Tsource>::Token CSScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data)
     {
         k_parser::SourceToken stok;
-        bool result = SkipToToken(stok);
-        if (result) {
+        Token result;
+        if (SkipToToken(stok)) {
             if (includespacers && stok.Length > 0) {
-                token.Type = TokenType::Spacer;
-                token.SourceToken = stok;
+                result.Type = TokenType::Spacer;
+                result.SourceToken = stok;
             } else {
-                token = ScanToken(data);
+                result = ScanToken(data);
             }
         }
         return result;
@@ -246,7 +248,7 @@ namespace k_csparser
             return token;
         }
 
-        token.Type = TokenType::Unknown;
+        token.Type = TokenType::None;
         auto c = CharCurrent();
 
         // identifier starts with following characters, so it's most
@@ -383,7 +385,7 @@ namespace k_csparser
         // if none of previous checks detected any kind of token
         // this is symbol or invalid character token, check for it here
         // try to match compounds first, and single characters next
-        if (token.Type == TokenType::Unknown) {
+        if (token.Type == TokenType::None) {
             bool validsymbol =
                 CheckAny(p_compounds, stok) ||
                 CheckAny(L".();,{}=[]:<>+-*/?%&|^!~", stok);
