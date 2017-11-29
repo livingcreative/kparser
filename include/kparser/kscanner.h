@@ -280,11 +280,12 @@ namespace k_parser
         Scanner(Tsource &source);
 
         // character range structure
+        // range values didn't depend on source char type
         //      TODO: improve CharRange
         struct CharRange
         {
-            char_t left;
-            char_t right;
+            unsigned int left;
+            unsigned int right;
         };
 
     protected:
@@ -306,7 +307,7 @@ namespace k_parser
                 FixedArray<const CharRange>()
             {}
 
-            // initialize from static C array with knwon length
+            // initialize from static C array with known length
             template <size_t length>
             CharSet(const CharRange(&items)[length]) :
                 FixedArray<const CharRange>(items)
@@ -321,13 +322,29 @@ namespace k_parser
             {
                 // TODO: deal with signed/unsigned char types
                 // TODO: use binary search and force ordered ranges rule
+                auto val = CharValue(value);
                 for (auto &&r : *this) {
-                    if (value >= r.left && value <= r.right) {
+                    if (val >= r.left && val <= r.right) {
                         return true;
                     }
                 }
 
                 return false;
+            }
+
+        private:
+            // helper function to convert given char value to CharRange range value
+            template <typename T>
+            static unsigned int CharValue(T value)
+            {
+                return static_cast<unsigned int>(value);
+            }
+
+            // special case for signed char to prevent sign expansion
+            template <>
+            static unsigned int CharValue(char value)
+            {
+                return static_cast<unsigned int>(static_cast<unsigned char>(value));
             }
         };
 
