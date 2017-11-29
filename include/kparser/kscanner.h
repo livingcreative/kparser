@@ -395,6 +395,11 @@ namespace k_parser
             return SkipToToken(token, nextline);
         }
 
+        // checks from ScannerSpecialCharChecker
+
+        bool IsSpace() const { return Tchecker::IsSpace(p_source); }
+        SourceLength IsBreak() const { return Tchecker::IsBreak(p_source); }
+
         // check that there's a match of a character or sequence at current position
 
         bool Check(char_t c, bool increment = true);
