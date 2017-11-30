@@ -177,7 +177,7 @@ namespace k_csparser
         "object", "operator", "out", "override", "params", "partial", "private",
         "protected", "public", "readonly", "ref", "return", "sbyte", "set", "short",
         "sizeof", "static", "string", "struct", "switch", "this", "throw", "true",
-        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "using", "ushort",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
         "var", "virtual", "void", "while", "yield"
     };
 
