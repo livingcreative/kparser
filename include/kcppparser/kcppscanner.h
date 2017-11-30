@@ -26,7 +26,7 @@ namespace k_cppparser
 
         enum class TokenType
         {
-            Unknown,      // token haven't been scanned yet
+            None,         // token haven't been scanned yet
             Identifier,   // any valid identifier
             Keyword,      // keyword (special identifiers)
             Number,       // any integer number, decimal or hexadecimal (might be incomplete)
@@ -43,13 +43,15 @@ namespace k_cppparser
         struct Token
         {
             Token() :
-                Type(TokenType::Unknown)
+                Type(TokenType::None)
             {}
 
             Token(TokenType _type, const k_parser::SourceToken &_token) :
                 Type(_type),
                 SourceToken(_token)
             {}
+
+            operator bool() const { return Type != TokenType::None; }
 
             TokenType             Type;
             k_parser::SourceToken SourceToken;
@@ -63,8 +65,8 @@ namespace k_cppparser
             Preprocessor
         };
 
-        bool ReadToken(bool includespacers, Token &token);
-        bool ReadToken(bool includespacers, k_parser::IncrementalScanData &data, Token &token);
+        Token ReadToken(bool includespacers);
+        Token ReadToken(bool includespacers, k_parser::IncrementalScanData &data);
 
     private:
         Token ScanToken(k_parser::IncrementalScanData &data);
@@ -87,18 +89,20 @@ namespace k_cppparser
         bool ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
 
     private:
+        typedef k_parser::Token<char> TokenChar;
+
         static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
         static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
         static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
         static const CharRange p_alphanum[5];    // alpha + numeric characters set
 
-        static const token_t p_hexprefixes[2];   // hexadecimal prefixes
-        static const token_t p_escapes[9];       // all predefined escape sequences
-        static const token_t p_compounds[24];    // all compound sequences
-        static const token_t p_linemerge[4];     // all compound sequences which forms skip over line breaks
+        static const TokenChar p_hexprefixes[2];   // hexadecimal prefixes
+        static const TokenChar p_escapes[9];       // all predefined escape sequences
+        static const TokenChar p_compounds[24];    // all compound sequences
+        static const TokenChar p_linemerge[4];     // all compound sequences which forms skip over line breaks
 
-        static const token_t p_keywords[75];     // all c++ keywords
+        static const TokenChar p_keywords[75];     // all c++ keywords
     };
 
     template <typename Tsource>
@@ -137,40 +141,40 @@ namespace k_cppparser
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_hexprefixes[] = {
-        L"0x", L"0X"
+    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_hexprefixes[] = {
+        "0x", "0X"
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_escapes[] = {
-        L"\\'",  L"\\\"", L"\\\\", L"\\t", L"\\r", L"\\n", L"\\b", L"\\f", L"\\0"
+    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_escapes[] = {
+        "\\'",  "\\\"", "\\\\", "\\t", "\\r", "\\n", "\\b", "\\f", "\\0"
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_compounds[] = {
-        L"<<=", L">>=", L"->*", L"...", L"==", L"!=", L"=>", L"&&", L"::", L"++",
-        L"--", L"||", L">=", L"<=", L"+=", L"-=", L"/=", L"*=", L"%=", L"&=",
-        L"|=", L"^=", L"->", L".*"
+    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_compounds[] = {
+        "<<=", ">>=", "->*", "...", "==", "!=", "=>", "&&", "::", "++",
+        "--", "||", ">=", "<=", "+=", "-=", "/=", "*=", "%=", "&=",
+        "|=", "^=", "->", ".*"
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_linemerge[] = {
-        L"\\\n\r", L"\\\r\n", L"\\\n", L"\\"
+    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_linemerge[] = {
+        "\\\n\r", "\\\r\n", "\\\n", "\\"
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::token_t CPPScanner<Tsource>::p_keywords[] = {
-        L"alignas", L"alignof", L"asm", L"auto", L"bool", L"break", L"case", L"catch",
-        L"char", L"char16_t", L"char32_t", L"class", L"const", L"constexpr", L"const_cast",
-        L"continue", L"decltype", L"default", L"delete", L"do", L"double", L"dynamic_cast",
-        L"else", L"enum", L"explicit", L"export", L"extern", L"false", L"final", L"float",
-        L"for", L"friend", L"goto", L"if", L"inline", L"int", L"long", L"mutable",
-        L"namespace", L"new", L"noexcept", L"nullptr", L"operator", L"override", L"private",
-        L"protected", L"public", L"register", L"reinterpret_cast", L"return", L"short",
-        L"signed", L"sizeof", L"static", L"static_assert", L"static_cast", L"struct",
-        L"switch", L"template", L"this", L"thread_local", L"throw", L"true", L"try",
-        L"typedef", L"typedid", L"typename", L"union", L"unsigned", L"using", L"virtual",
-        L"void", L"volatile", L"wchar_t", L"while"
+    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_keywords[] = {
+        "alignas", "alignof", "asm", "auto", "bool", "break", "case", "catch",
+        "char", "char16_t", "char32_t", "class", "const", "constexpr", "const_cast",
+        "continue", "decltype", "default", "delete", "do", "double", "dynamic_cast",
+        "else", "enum", "explicit", "export", "extern", "false", "final", "float",
+        "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
+        "namespace", "new", "noexcept", "nullptr", "operator", "override", "private",
+        "protected", "public", "register", "reinterpret_cast", "return", "short",
+        "signed", "sizeof", "static", "static_assert", "static_cast", "struct",
+        "switch", "template", "this", "thread_local", "throw", "true", "try",
+        "typedef", "typedid", "typename", "union", "unsigned", "using", "virtual",
+        "void", "volatile", "wchar_t", "while"
     };
 
     template <typename Tsource>
@@ -179,33 +183,23 @@ namespace k_cppparser
     {}
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ReadToken(bool includespacers, Token &token)
+    typename CPPScanner<Tsource>::Token CPPScanner<Tsource>::ReadToken(bool includespacers)
     {
-        k_parser::SourceToken stok;
-        bool result = SkipToToken(stok);
-        if (result) {
-            if (includespacers && stok.Length > 0) {
-                token.Type = TokenType::Spacer;
-                token.SourceToken = stok;
-            } else {
-                IncrementalScanData data;
-                token = ScanToken(data);
-            }
-        }
-        return result;
+        IncrementalScanData data;
+        return ReadToken(includespacers, data);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data, Token &token)
+    typename CPPScanner<Tsource>::Token CPPScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data)
     {
         k_parser::SourceToken stok;
-        bool result = SkipToToken(stok);
-        if (result) {
+        Token result;
+        if (SkipToToken(stok)) {
             if (includespacers && stok.Length > 0) {
-                token.Type = TokenType::Spacer;
-                token.SourceToken = stok;
+                result.Type = TokenType::Spacer;
+                result.SourceToken = stok;
             } else {
-                token = ScanToken(data);
+                result = ScanToken(data);
             }
         } else {
             switch (data.Current) {
@@ -233,7 +227,7 @@ namespace k_cppparser
                     token.Type = TokenType::Comment;
 
                     int level = 1;
-                    auto result = ContinueTo(L"", L"*/", true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(""), C("*/"), true, nullptr, false, stok, level);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -255,7 +249,7 @@ namespace k_cppparser
                         stok
                     );
 
-                    if (!Match(result) || EndsWith(stok, p_linemerge) == NO_MATCH) {
+                    if (!Match(result) || EndsWith(stok, A(p_linemerge)) == NO_MATCH) {
                         data.Current = int(IncrementalCurrentType::None);
                     }
 
@@ -268,7 +262,7 @@ namespace k_cppparser
             return token;
         }
 
-        token.Type = TokenType::Unknown;
+        token.Type = TokenType::None;
         auto c = CharCurrent();
 
         // identifier starts with following characters, so it's most
@@ -280,13 +274,8 @@ namespace k_cppparser
             if (ScanIdent(stok)) {
                 token.Type = TokenType::Identifier;
 
-                for (size_t n = 0; n < sizeof(p_keywords) / sizeof(p_keywords[0]); ++n) {
-                    auto t = SourceTokenToToken(stok);
-                    auto &kw = p_keywords[n];
-                    if (t.Length == kw.Length && memcmp(t.Text, kw.Text, kw.Length * sizeof(char_t)) == 0) {
-                        token.Type = TokenType::Keyword;
-                        break;
-                    }
+                if (TokenCheckAny(stok, A(p_keywords)) != NO_MATCH) {
+                    token.Type = TokenType::Keyword;
                 }
             }
         }
@@ -358,10 +347,10 @@ namespace k_cppparser
         // if none of previous checks detected any kind of token
         // this is symbol or invalid character token, check for it here
         // try to match compounds first, and single characters next
-        if (token.Type == TokenType::Unknown) {
+        if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(p_compounds, stok) ||
-                CheckAny(L".();,{}=[]:<>+-*/?%&|^!~", stok);
+                CheckAny(A(p_compounds), stok) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
@@ -383,7 +372,7 @@ namespace k_cppparser
         k_parser::SourceToken token;
 
         auto unicodeescape = FromTokenWhile(
-            L"\\u", p_hexadecimal, false, nullptr,
+            C("\\u"), p_hexadecimal, false, nullptr,
             false, token, false
         );
 
@@ -392,12 +381,12 @@ namespace k_cppparser
         }
 
         int length;
-        if (CheckAny(p_escapes, length, false) != NO_MATCH) {
+        if (CheckAny(A(p_escapes), length, false) != NO_MATCH) {
             return length;
         }
 
         unicodeescape = FromTokenWhile(
-            L"\\x", p_hexadecimal, false, nullptr,
+            C("\\x"), p_hexadecimal, false, nullptr,
             false, token, false
         );
 
@@ -412,7 +401,7 @@ namespace k_cppparser
     int CPPScanner<Tsource>::IsLineBreakMerge()
     {
         int length;
-        if (CheckAny(p_linemerge, length, false) != NO_MATCH) {
+        if (CheckAny(A(p_linemerge), length, false) != NO_MATCH) {
             return length;
         }
 
@@ -429,7 +418,7 @@ namespace k_cppparser
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
     {
-        auto result = FromTo(L"/*", L"*/", true, nullptr, false, token);
+        auto result = FromTo(C("/*"), C("*/"), true, nullptr, false, token);
         if (Match(result)) {
             if (result == ScanResult::MatchTrimmedEOF) {
                 data.Current = int(IncrementalCurrentType::MultilineComment);
@@ -437,9 +426,9 @@ namespace k_cppparser
             return true;
         }
 
-        result = FromTokenWhile(L"//", p_all, false, nullptr, false, token);
+        result = FromTokenWhile(C("//"), p_all, false, nullptr, false, token);
 
-        if (Match(result) && EndsWith(token, p_linemerge) != NO_MATCH) {
+        if (Match(result) && EndsWith(token, A(p_linemerge)) != NO_MATCH) {
             data.Current = int(IncrementalCurrentType::SinglelineComment);
         }
 
@@ -450,14 +439,14 @@ namespace k_cppparser
     template <typename Tinner>
     typename CPPScanner<Tsource>::ScanResult CPPScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
     {
-        return FromTo(L"\"", L"\"", false, inner, false, token);
+        return FromTo(C("\""), C("\""), false, inner, false, token);
     }
 
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanCharacter(k_parser::SourceToken &token)
     {
         auto result = FromTo(
-            L"'", L"'", false, [this]() { return IsEscape(); },
+            C("'"), C("'"), false, [this]() { return IsEscape(); },
             false, token
         );
 
@@ -467,20 +456,20 @@ namespace k_cppparser
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanIntegerPostfix()
     {
-        return CheckAny(L"lLuU") != NO_MATCH;
+        return CheckAny(C("lLuU")) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanRealPostfix()
     {
-        return CheckAny(L"fFdD") != NO_MATCH;
+        return CheckAny(C("fFdD")) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanHexadecimal(k_parser::SourceToken &token)
     {
         auto result = Match(FromTokenWhile(
-            p_hexprefixes, p_hexadecimal, false, nullptr,
+            A(p_hexprefixes), p_hexadecimal, false, nullptr,
             false, token
         ));
 
@@ -501,15 +490,15 @@ namespace k_cppparser
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanReal(k_parser::SourceToken &token)
     {
-        auto result = FromTokenWhile(L".", p_numeric, false, nullptr, true, token);
+        auto result = FromTokenWhile(C("."), p_numeric, false, nullptr, true, token);
 
         if (Match(result)) {
             // optional E/e part
-            if (CheckAny(L"eE") != NO_MATCH) {
+            if (CheckAny(C("eE")) != NO_MATCH) {
                 ++token.Length;
 
                 // optional +/- after exponent sign
-                if (CheckAny(L"+-") != NO_MATCH) {
+                if (CheckAny(C("+-")) != NO_MATCH) {
                     ++token.Length;
                 }
 
@@ -533,11 +522,11 @@ namespace k_cppparser
     bool CPPScanner<Tsource>::ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
     {
         auto result = Match(FromTokenWhile(
-            L"#", p_all, false, [=]() { return IsLineBreakMerge(); },
+            C("#"), p_all, false, [=]() { return IsLineBreakMerge(); },
             false, token
         ));
 
-        if (result && EndsWith(token, p_linemerge) != NO_MATCH) {
+        if (result && EndsWith(token, A(p_linemerge)) != NO_MATCH) {
             data.Current = int(IncrementalCurrentType::Preprocessor);
         }
 

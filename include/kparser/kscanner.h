@@ -378,12 +378,39 @@ namespace k_parser
         template <typename Tc, typename... Args>
         static inline ScanResult SequenceMatch(SourceToken &token, Tc first, Args... args);
 
+        // helper functions to compare tokens of same or different character types
+        template <typename T1, typename T2>
+        static inline int CompareTokens(const Token<T1> &a, const Token<T2> &b);
+
+        template <typename T>
+        static inline int CompareTokens(const Token<T> &a, const Token<T> &b);
+
+        // helper functions to help awsome c++ compiler with types
+        template <typename T, size_t length>
+        FixedArray<T> A(T (&items)[length])
+        {
+            return FixedArray<T>(items);
+        }
+
+        template <typename T, size_t length>
+        Token<T> C(T (&items)[length])
+        {
+            return Token<T>(items);
+        }
+
         // helper functions to check if token starts or ends with one of given sequences
 
-        bool StartsWith(const SourceToken &token, const token_t &sequence);
-        int StartsWith(const SourceToken &token, const FixedArray<const token_t> &sequences);
-        bool EndsWith(const SourceToken &token, const token_t &sequence);
-        int EndsWith(const SourceToken &token, const FixedArray<const token_t> &sequences);
+        template <typename T>
+        bool StartsWith(const SourceToken &token, const Token<T> &sequence);
+
+        template <typename T>
+        int StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences);
+
+        template <typename T>
+        bool EndsWith(const SourceToken &token, const Token<T> &sequence);
+
+        template <typename T>
+        int EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences);
 
         // helper function to convert SourceToken to token
         token_t SourceTokenToToken(const SourceToken &token) const
@@ -419,22 +446,35 @@ namespace k_parser
 
         // check that there's a match of a character or sequence at current position
 
-        bool Check(char_t c, bool increment = true);
-        bool Check(const token_t &s, bool increment = true);
+        template <typename T>
+        bool Check(T c, bool increment = true);
+
+        template <typename T>
+        bool Check(const Token<T> &s, bool increment = true);
 
         // following CheckAny functions are sort of high-level versions of Check to help
         // perform checks against multiple characters or sequences
 
         static const int NO_MATCH = -1;
 
-        int CheckAny(const token_t &characters, bool increment = true);
-        bool CheckAny(const token_t &characters, SourceToken &token, bool increment = true);
-        int CheckAny(const FixedArray<const token_t> &compounds, int &length, bool increment = true);
-        bool CheckAny(const FixedArray<const token_t> &compounds, SourceToken &token, bool increment = true);
+        template <typename T>
+        int CheckAny(const Token<T> &characters, bool increment = true);
+
+        template <typename T>
+        bool CheckAny(const Token<T> &characters, SourceToken &token, bool increment = true);
+
+        template <typename T>
+        int CheckAny(const FixedArray<const Token<T>> &compounds, int &length, bool increment = true);
+
+        template <typename T>
+        bool CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, bool increment = true);
 
         // helper functions to check already scanned token
-        int TokenCheckAny(const SourceToken &token, const token_t &characters);
-        int TokenCheckAny(const SourceToken &token, const FixedArray<const token_t> &sequences);
+        template <typename T>
+        int TokenCheckAny(const SourceToken &token, const Token<T> &characters);
+
+        template <typename T>
+        int TokenCheckAny(const SourceToken &token, const FixedArray<const Token<T>> &sequences);
 
         // following are core scan functions which perform scans for common patterns
         // Tinner template parameter designates "inner scan" lambda function
@@ -451,20 +491,20 @@ namespace k_parser
         template <typename Tinner>
         ScanResult ContinueWhile(const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment = true);
 
-        template <typename Tinner>
-        ScanResult ContinueTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment = true);
+        template <typename T, typename Tinner>
+        ScanResult ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment = true);
 
         template <typename Tinner>
         ScanResult FromSetWhile(const CharSet &from, const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment = true);
 
-        template <typename Tinner>
-        ScanResult FromTokenWhile(const token_t &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
+        template <typename T, typename Tinner>
+        ScanResult FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
-        template <typename Tinner>
-        ScanResult FromTokenWhile(const FixedArray<const token_t> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
+        template <typename T, typename Tinner>
+        ScanResult FromTokenWhile(const FixedArray<const Token<T>> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true);
 
-        template <typename Tinner>
-        ScanResult FromTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment = true);
+        template <typename T, typename Tinner>
+        ScanResult FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment = true);
 
     private:
         // template ugly "magic" for allowing to pass lambda and nullptr values
@@ -571,7 +611,41 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const token_t &sequence)
+    template <typename T1, typename T2>
+    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b)
+    {
+        auto minlen = a.Length < b.Length ? a.Length : b.Length;
+
+        auto pa = a.Text;
+        auto pb = b.Text;
+
+        while (minlen-- > 0) {
+            // TODO: refine diff comparison
+            auto diff = int(*pa++) - int(*pb++);
+            if (diff != 0) {
+                return diff;
+            }
+        }
+
+        return a.Length - b.Length;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T> &a, const Token<T> &b)
+    {
+        auto minlen = a.Length < b.Length ? a.Length : b.Length;
+        auto result = memcmp(a.Text, b.Text, minlen * sizeof(T));
+        if (result != 0) {
+            return result;
+        } else {
+            return a.Length - b.Length;
+        }
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const Token<T> &sequence)
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -581,7 +655,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const token_t> &sequences)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
     {
         for (size_t n = 0; n < sequences.count(); ++n) {
             auto &s = sequences[n];
@@ -594,7 +669,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const token_t &sequence)
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const Token<T> &sequence)
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -604,7 +680,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const token_t> &sequences)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
     {
         for (size_t n = 0; n < sequences.count(); ++n) {
             auto &s = sequences[n];
@@ -644,8 +721,10 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::Check(char_t c, bool increment)
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::Check(T c, bool increment)
     {
+        // TODO: handle different type char comparison
         bool result = !p_source.IsEnd() && p_source.CharCurrent() == c;
 
         if (result && increment) {
@@ -656,14 +735,14 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::Check(const token_t &s, bool increment)
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::Check(const Token<T> &s, bool increment)
     {
         bool result =
             HasCharacters(s.Length) &&
-            memcmp(
-                s.Text,
-                p_source.SourceTokenToToken(SourceToken(p_source.Position(), s.Length)).Text,
-                s.Length * sizeof(char_t)
+            CompareTokens(
+                s,
+                p_source.SourceTokenToToken(SourceToken(p_source.Position(), s.Length))
             ) == 0;
 
         if (result && increment) {
@@ -674,7 +753,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::CheckAny(const token_t &characters, bool increment)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::CheckAny(const Token <T> &characters, bool increment)
     {
         for (auto n = 0; n < characters.Length; ++n) {
             if (Check(characters.Text[n], increment)) {
@@ -686,7 +766,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const token_t &characters, SourceToken &token, bool increment)
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, bool increment)
     {
         auto pos = p_source.Position();
         auto result = CheckAny(characters, increment) != NO_MATCH;
@@ -697,7 +778,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const token_t> &compounds, int &length, bool increment)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, int &length, bool increment)
     {
         length = 0;
 
@@ -713,7 +795,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const token_t> &compounds, SourceToken &token, bool increment)
+    template <typename T>
+    bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, bool increment)
     {
         auto length = 0;
         auto pos = p_source.Position();
@@ -726,7 +809,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const token_t &characters)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const Token<T> &characters)
     {
         if (token.Length != 1) {
             return NO_MATCH;
@@ -735,6 +819,7 @@ namespace k_parser
         auto t = SourceTokenToToken(token);
 
         for (auto n = 0; n < characters.Length; ++n) {
+            // TODO: refine char comparison for different char types
             if (characters.Text[n] == t.Text[0]) {
                 return n;
             }
@@ -744,13 +829,14 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const FixedArray<const token_t> &sequences)
+    template <typename T>
+    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
     {
         auto t = SourceTokenToToken(token);
 
         for (size_t n = 0; n < sequences.count(); ++n) {
             auto &s = sequences[n];
-            if (t.Length == s.Length && memcmp(t.Text, s.Text, s.Length * sizeof(char_t)) == 0) {
+            if (CompareTokens(t, s) == 0) {
                 return int(n);
             }
         }
@@ -823,8 +909,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::ContinueTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment)
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment)
     {
         token = SourceToken(p_source.Position());
 
@@ -890,8 +976,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const token_t &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
         token = SourceToken(p_source.Position());
 
@@ -918,8 +1004,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const token_t> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const Token<T>> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
         auto result = ScanResult::NoMatch;
 
@@ -938,8 +1024,8 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTo(const token_t &fromtoken, const token_t &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult Scanner<Tsource, Tchecker>::FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
     {
         token = SourceToken(p_source.Position());
 

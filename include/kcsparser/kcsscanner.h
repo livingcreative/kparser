@@ -99,17 +99,19 @@ namespace k_csparser
         bool ScanPreprocessor(k_parser::SourceToken &token);
 
     private:
+        typedef k_parser::Token<char> TokenChar;
+
         static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
         static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
         static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
         static const CharRange p_alphanum[5];    // alpha + numeric characters set
 
-        static const token_t   p_hexprefixes[2]; // hexadecimal prefixes
-        static const token_t   p_escapes[9];     // all predefined escape sequences
-        static const token_t   p_compounds[21];  // all compound sequences
+        static const TokenChar p_hexprefixes[2]; // hexadecimal prefixes
+        static const TokenChar p_escapes[9];     // all predefined escape sequences
+        static const TokenChar p_compounds[21];  // all compound sequences
 
-        static const token_t   p_keywords[75];
+        static const TokenChar p_keywords[75];
     };
 
 
@@ -149,34 +151,34 @@ namespace k_csparser
     };
 
     template <typename Tsource>
-    const typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_hexprefixes[] = {
-        L"0x", L"0X"
+    const typename CSScanner<Tsource>::TokenChar CSScanner<Tsource>::p_hexprefixes[] = {
+        "0x", "0X"
     };
 
     template <typename Tsource>
-    const typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_escapes[] = {
-        L"\\'",  L"\\\"", L"\\\\", L"\\t", L"\\r", L"\\n", L"\\b", L"\\f", L"\\0"
+    const typename CSScanner<Tsource>::TokenChar CSScanner<Tsource>::p_escapes[] = {
+        "\\'",  "\\\"", "\\\\", "\\t", "\\r", "\\n", "\\b", "\\f", "\\0"
     };
 
     template <typename Tsource>
-    const typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_compounds[] = {
-        L"<<=", L">>=",
-        L"==", L"!=", L"=>", L"&&", L"??", L"++", L"--", L"||", L">=", L"<=",
-        L"+=", L"-=", L"/=", L"*=", L"%=", L"&=", L"|=", L"^=", L"->"
+    const typename CSScanner<Tsource>::TokenChar CSScanner<Tsource>::p_compounds[] = {
+        "<<=", ">>=",
+        "==", "!=", "=>", "&&", "??", "++", "--", "||", ">=", "<=",
+        "+=", "-=", "/=", "*=", "%=", "&=", "|=", "^=", "->"
     };
 
     template <typename Tsource>
-    const typename CSScanner<Tsource>::token_t CSScanner<Tsource>::p_keywords[] = {
-        L"abstract", L"as", L"base", L"bool", L"break", L"byte", L"case", L"catch",
-        L"char", L"checked", L"class", L"const", L"continue", L"decimal", L"default",
-        L"delegate", L"do", L"double", L"else", L"enum", L"event", L"extern", L"false",
-        L"finally", L"float", L"for", L"foreach", L"get", L"goto", L"if", L"int",
-        L"interface", L"internal", L"is", L"lock", L"long", L"namespace", L"new", L"null",
-        L"object", L"operator", L"out", L"override", L"params", L"partial", L"private",
-        L"protected", L"public", L"readonly", L"ref", L"return", L"sbyte", L"set", L"short",
-        L"sizeof", L"static", L"string", L"struct", L"switch", L"this", L"throw", L"true",
-        L"try", L"typeof", L"uint", L"ulong", L"unchecked", L"unsafe", L"using", L"ushort",
-        L"var", L"virtual", L"void", L"while", L"yield"
+    const typename CSScanner<Tsource>::TokenChar CSScanner<Tsource>::p_keywords[] = {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch",
+        "char", "checked", "class", "const", "continue", "decimal", "default",
+        "delegate", "do", "double", "else", "enum", "event", "extern", "false",
+        "finally", "float", "for", "foreach", "get", "goto", "if", "int",
+        "interface", "internal", "is", "lock", "long", "namespace", "new", "null",
+        "object", "operator", "out", "override", "params", "partial", "private",
+        "protected", "public", "readonly", "ref", "return", "sbyte", "set", "short",
+        "sizeof", "static", "string", "struct", "switch", "this", "throw", "true",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "using", "ushort",
+        "var", "virtual", "void", "while", "yield"
     };
 
 
@@ -220,7 +222,7 @@ namespace k_csparser
                     token.Type = TokenType::Comment;
 
                     int level = 1;
-                    auto result = ContinueTo(L"", L"*/", true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(""), C("*/"), true, nullptr, false, stok, level);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -233,7 +235,7 @@ namespace k_csparser
                     token.Type = TokenType::String;
 
                     int level = 1;
-                    auto result = ContinueTo(L"", L"\"", true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(""), C("\""), true, nullptr, false, stok, level);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -260,7 +262,7 @@ namespace k_csparser
             if (ScanIdent(stok)) {
                 token.Type = TokenType::Identifier;
 
-                if (TokenCheckAny(stok, p_keywords) != NO_MATCH) {
+                if (TokenCheckAny(stok, A(p_keywords)) != NO_MATCH) {
                     token.Type = TokenType::Keyword;
                 }
             }
@@ -387,8 +389,8 @@ namespace k_csparser
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(p_compounds, stok) ||
-                CheckAny(L".();,{}=[]:<>+-*/?%&|^!~", stok);
+                CheckAny(A(p_compounds), stok) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
@@ -410,7 +412,7 @@ namespace k_csparser
         k_parser::SourceToken token;
 
         auto unicodeescape = FromTokenWhile(
-            L"\\u", p_hexadecimal, false, nullptr,
+            C("\\u"), p_hexadecimal, false, nullptr,
             false, token, false
         );
 
@@ -420,12 +422,12 @@ namespace k_csparser
 
         if (context == eccCharacter) {
             int length;
-            if (CheckAny(p_escapes, length, false) != NO_MATCH) {
+            if (CheckAny(A(p_escapes), length, false) != NO_MATCH) {
                 return length;
             }
 
             unicodeescape = FromTokenWhile(
-                L"\\x", p_hexadecimal, false, nullptr,
+                C("\\x"), p_hexadecimal, false, nullptr,
                 false, token, false
             );
 
@@ -441,7 +443,7 @@ namespace k_csparser
     int CSScanner<Tsource>::ScanInterpolationComment(bool multiline)
     {
         k_parser::SourceToken token;
-        auto result = FromTo(L"/*", L"*/", multiline, nullptr, false, token, false);
+        auto result = FromTo(C("/*"), C("*/"), multiline, nullptr, false, token, false);
 
         return Match(result) ? token.Length : 0;
     }
@@ -458,7 +460,7 @@ namespace k_csparser
 
         k_parser::SourceToken interp;
         auto result = FromTo(
-            L"{", L"}", multiline,
+            C("{"), C("}"), multiline,
             [this, multiline]() { return ScanInterpolationComment(multiline); },
             true, interp, false
         );
@@ -482,8 +484,8 @@ namespace k_csparser
     {
         auto result = AnyMatch(
             token,
-            [this](auto &t) { return FromTokenWhile(L"//", p_all, false, nullptr, false, t); },
-            [this](auto &t) { return FromTo(L"/*", L"*/", true, nullptr, false, t); }
+            [this](auto &t) { return FromTokenWhile(C("//"), p_all, false, nullptr, false, t); },
+            [this](auto &t) { return FromTo(C("/*"), C("*/"), true, nullptr, false, t); }
         );
 
         if (result == ScanResult::MatchTrimmedEOF) {
@@ -497,21 +499,21 @@ namespace k_csparser
     template <typename Tinner>
     typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
     {
-        return FromTo(L"\"", L"\"", false, inner, false, token);
+        return FromTo(C("\""), C("\""), false, inner, false, token);
     }
 
     template <typename Tsource>
     template <typename Tinner>
     typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token)
     {
-        auto result = FromTo(L"@\"", L"\"", true, inner, false, token);
+        auto result = FromTo(C("@\""), C("\""), true, inner, false, token);
 
         switch (result) {
             // continue with contigous double quoted strings only if there was full match
             case ScanResult::Match: {
                 SourceToken tok;
                 ScanResult next;
-                while (Match(next = FromTo(L"\"", L"\"", true, inner, false, tok))) {
+                while (Match(next = FromTo(C("\""), C("\""), true, inner, false, tok))) {
                     result = next;
                     token.Length += tok.Length;
                 }
@@ -530,7 +532,7 @@ namespace k_csparser
     bool CSScanner<Tsource>::ScanCharacter(k_parser::SourceToken &token)
     {
         auto result = FromTo(
-            L"'", L"'", false, [this]() { return IsEscape(eccCharacter); },
+            C("'"), C("'"), false, [this]() { return IsEscape(eccCharacter); },
             false, token
         );
 
@@ -540,20 +542,20 @@ namespace k_csparser
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanIntegerPostfix()
     {
-        return CheckAny(L"lLuU") != NO_MATCH;
+        return CheckAny(C("lLuU")) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanRealPostfix()
     {
-        return CheckAny(L"fFdDmM") != NO_MATCH;
+        return CheckAny(C("fFdDmM")) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanHexadecimal(k_parser::SourceToken &token)
     {
         auto result = Match(FromTokenWhile(
-            p_hexprefixes, p_hexadecimal, false, nullptr,
+            A(p_hexprefixes), p_hexadecimal, false, nullptr,
             false, token
         ));
 
@@ -574,15 +576,15 @@ namespace k_csparser
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanReal(k_parser::SourceToken &token)
     {
-        auto result = FromTokenWhile(L".", p_numeric, false, nullptr, true, token);
+        auto result = FromTokenWhile(C("."), p_numeric, false, nullptr, true, token);
 
         if (Match(result)) {
             // optional E/e part
-            if (CheckAny(L"eE") != NO_MATCH) {
+            if (CheckAny(C("eE")) != NO_MATCH) {
                 ++token.Length;
 
                 // optional +/- after exponent sign
-                if (CheckAny(L"+-") != NO_MATCH) {
+                if (CheckAny(C("+-")) != NO_MATCH) {
                     ++token.Length;
                 }
 
@@ -605,7 +607,7 @@ namespace k_csparser
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanPreprocessor(k_parser::SourceToken &token)
     {
-        auto result = FromTokenWhile(L"#", p_all, false, nullptr, false, token);
+        auto result = FromTokenWhile(C("#"), p_all, false, nullptr, false, token);
         return Match(result);
     }
 
