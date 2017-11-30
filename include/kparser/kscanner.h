@@ -380,10 +380,10 @@ namespace k_parser
 
         // helper functions to compare tokens of same or different character types
         template <typename T1, typename T2>
-        static inline int CompareTokens(const Token<T1> &a, const Token<T2> &b);
+        static inline int CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit = -1);
 
         template <typename T>
-        static inline int CompareTokens(const Token<T> &a, const Token<T> &b);
+        static inline int CompareTokens(const Token<T> &a, const Token<T> &b, SourceSize limit = -1);
 
         // helper for comparison functions, trims comparison result to -1 0 +1
         static inline int sign(int value)
@@ -622,9 +622,13 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T1, typename T2>
-    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b)
+    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit)
     {
         auto minlen = a.Length < b.Length ? a.Length : b.Length;
+
+        if (limit >= 0 && minlen > limit) {
+            minlen = limit;
+        }
 
         auto pa = a.Text;
         auto pb = b.Text;
@@ -637,17 +641,28 @@ namespace k_parser
             }
         }
 
+        if (limit >= 0) {
+            return 0;
+        }
+
         return sign(a.Length - b.Length);
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T> &a, const Token<T> &b)
+    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T> &a, const Token<T> &b, SourceSize limit)
     {
         auto minlen = a.Length < b.Length ? a.Length : b.Length;
+
+        if (limit >= 0 && minlen > limit) {
+            minlen = limit;
+        }
+
         auto result = memcmp(a.Text, b.Text, minlen * sizeof(T));
         if (result != 0) {
             return result;
+        } else if (limit >= 0) {
+            return 0;
         } else {
             return sign(a.Length - b.Length);
         }
@@ -660,7 +675,7 @@ namespace k_parser
         auto tok = SourceTokenToToken(token);
         bool result =
             tok.Length >= sequence.Length &&
-            memcmp(tok.Text, sequence.Text, sequence.Length * sizeof(char_t)) == 0;
+            CompareTokens(tok, sequence, sequence.Length) == 0;
         return result;
     }
 
@@ -685,7 +700,10 @@ namespace k_parser
         auto tok = SourceTokenToToken(token);
         bool result =
             tok.Length >= sequence.Length &&
-            memcmp(tok.Text + tok.Length - sequence.Length, sequence.Text, sequence.Length * sizeof(char_t)) == 0;
+            CompareTokens(
+                token_t(tok.Text + tok.Length - sequence.Length, sequence.Length),
+                sequence, sequence.Length
+            ) == 0;
         return result;
     }
 
