@@ -385,15 +385,25 @@ namespace k_parser
         template <typename T>
         static inline int CompareTokens(const Token<T> &a, const Token<T> &b);
 
+        // helper for comparison functions, trims comparison result to -1 0 +1
+        static inline int sign(int value)
+        {
+            if (value == 0) {
+                return value;
+            }
+
+            return value > 0 ? +1 : -1;
+        }
+
         // helper functions to help awsome c++ compiler with types
         template <typename T, size_t length>
-        FixedArray<T> A(T (&items)[length])
+        static FixedArray<T> A(T (&items)[length])
         {
             return FixedArray<T>(items);
         }
 
         template <typename T, size_t length>
-        Token<T> C(T (&items)[length])
+        static Token<T> C(T (&items)[length])
         {
             return Token<T>(items);
         }
@@ -623,11 +633,11 @@ namespace k_parser
             // TODO: refine diff comparison
             auto diff = int(*pa++) - int(*pb++);
             if (diff != 0) {
-                return diff;
+                return sign(diff);
             }
         }
 
-        return a.Length - b.Length;
+        return sign(a.Length - b.Length);
     }
 
     template <typename Tsource, typename Tchecker>
@@ -639,7 +649,7 @@ namespace k_parser
         if (result != 0) {
             return result;
         } else {
-            return a.Length - b.Length;
+            return sign(a.Length - b.Length);
         }
     }
 
