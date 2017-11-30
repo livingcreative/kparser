@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <algorithm>
+
+
 namespace k_parser
 {
     //
@@ -862,11 +865,15 @@ namespace k_parser
     {
         auto t = SourceTokenToToken(token);
 
-        for (size_t n = 0; n < sequences.count(); ++n) {
-            auto &s = sequences[n];
-            if (CompareTokens(t, s) == 0) {
-                return int(n);
+        auto bound = std::lower_bound(
+            sequences.begin(), sequences.end(), t,
+            [](const auto &a, const auto &b) {
+                return CompareTokens(a, b) < 0;
             }
+        );
+
+        if (bound != sequences.end() && CompareTokens(t, *bound) >= 0) {
+            return int(bound - sequences.begin());
         }
 
         return NO_MATCH;
