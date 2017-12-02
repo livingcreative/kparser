@@ -94,6 +94,10 @@ namespace k_parser
             Length(token.Length)
         {}
 
+        // const iterators
+        const T* begin() const { return Text; }
+        const T* end() const { return Text + Length; }
+
         const T    *Text;   // pointer to first token character
         SourceSize  Length; // character count
     };
@@ -552,7 +556,7 @@ namespace k_parser
         } else if (limit >= 0) {
             return 0;
         } else {
-            return sign(a.Length - b.Length);
+            return Helpers::sign(a.Length - b.Length);
         }
     }
 
@@ -571,14 +575,12 @@ namespace k_parser
     template <typename T>
     int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
     {
-        for (size_t n = 0; n < sequences.count(); ++n) {
-            auto &s = sequences[n];
-            if (StartsWith(token, s)) {
-                return int(n);
-            }
-        }
+        auto found = std::find_if(
+            sequences.begin(), sequences.end(),
+            [&token, this](const auto &s) { return StartsWith(token, s); }
+        );
 
-        return NO_MATCH;
+        return found == sequences.end() ? NO_MATCH : int(found - sequences.begin());
     }
 
     template <typename Tsource, typename Tchecker>
@@ -599,14 +601,12 @@ namespace k_parser
     template <typename T>
     int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
     {
-        for (size_t n = 0; n < sequences.count(); ++n) {
-            auto &s = sequences[n];
-            if (EndsWith(token, s)) {
-                return int(n);
-            }
-        }
+        auto found = std::find_if(
+            sequences.begin(), sequences.end(),
+            [&token, this](const auto &s) { return EndsWith(token, s); }
+        );
 
-        return NO_MATCH;
+        return found == sequences.end() ? NO_MATCH : int(found - sequences.begin());
     }
 
     template <typename Tsource, typename Tchecker>
@@ -670,15 +670,14 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::CheckAny(const Token <T> &characters, bool increment)
+    int Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, bool increment)
     {
-        for (auto n = 0; n < characters.Length; ++n) {
-            if (Check(characters.Text[n], increment)) {
-                return n;
-            }
-        }
+        auto found = std::find_if(
+            characters.begin(), characters.end(),
+            [increment, this](const auto &c) { return Check(c, increment); }
+        );
 
-        return NO_MATCH;
+        return found == characters.end() ? NO_MATCH : int(found - characters.begin());
     }
 
     template <typename Tsource, typename Tchecker>
@@ -699,15 +698,18 @@ namespace k_parser
     {
         length = 0;
 
-        for (size_t n = 0; n < compounds.count(); ++n) {
-            auto &c = compounds[n];
-            if (Check(c, increment)) {
-                length = c.Length;
-                return int(n);
-            }
+        auto found = std::find_if(
+            compounds.begin(), compounds.end(),
+            [increment, this](const auto &c) { return Check(c, increment); }
+        );
+
+        if (found == compounds.end()) {
+            return NO_MATCH;
         }
 
-        return NO_MATCH;
+        length = found->Length;
+
+        return int(found - compounds.begin());
     }
 
     template <typename Tsource, typename Tchecker>
@@ -734,14 +736,14 @@ namespace k_parser
 
         auto t = SourceTokenToToken(token);
 
-        for (auto n = 0; n < characters.Length; ++n) {
-            // TODO: refine char comparison for different char types
-            if (characters.Text[n] == t.Text[0]) {
-                return n;
+        auto found = std::find_if(
+            characters.begin(), characters.end(),
+            [const &t](const auto &c) {
+                return Helpers::CharValue(c) == Helpers::CharValue(t.Text[0]);
             }
-        }
+        );
 
-        return NO_MATCH;
+        return found == characters.end() ? NO_MATCH : int(found - characters.begin());
     }
 
     template <typename Tsource, typename Tchecker>
