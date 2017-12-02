@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "khelpers.h"
 #include <algorithm>
 
 
@@ -60,51 +61,6 @@ namespace k_parser
 
         int Current;      // current scanner context
         int NestingLevel; // current nesting level
-    };
-
-
-    // handy template class for passing static/dynamic arrays with known fixed size
-    //      T - type for array element
-    template <typename T>
-    class FixedArray
-    {
-    public:
-        // initialize empty array
-        FixedArray() :
-            p_items(nullptr),
-            p_count(0)
-        {}
-
-        // initialize from static C array with knwon length
-        template <size_t length>
-        FixedArray(T (&items)[length]) :
-            p_items(items),
-            p_count(length)
-        {}
-
-        // initialize from items pointer and given item count
-        FixedArray(T *items, size_t count) :
-            p_items(items),
-            p_count(count)
-        {}
-
-        // access by index operators
-        T& operator[](size_t index) { return p_items[index]; }
-        T& operator[](size_t index) const { return p_items[index]; }
-        // get item count
-        size_t count() const { return p_count; }
-
-        // iterators
-        T* begin() { return p_items; }
-        T* end() { return p_items + p_count; }
-
-        // const iterators
-        T* begin() const { return p_items; }
-        T* end() const { return p_items + p_count; }
-
-    private:
-        T      *p_items; // pointer to first item
-        size_t  p_count; // item count
     };
 
 
@@ -278,18 +234,13 @@ namespace k_parser
         typedef Tsource source_t;
         typedef Token<char_t> token_t;
 
+        // bring some types from khelpers.h for ease of use in specific scanners
+        typedef CharRange CharRange;
+        typedef CharSet CharSet;
+
     public:
         // construct scanner for given source
         Scanner(Tsource &source);
-
-        // character range structure
-        // range values didn't depend on source char type
-        //      TODO: improve CharRange
-        struct CharRange
-        {
-            unsigned int left;
-            unsigned int right;
-        };
 
     protected:
         // scan result returned by some of scanner functions
@@ -299,56 +250,6 @@ namespace k_parser
             Match,           // full match
             MatchTrimmedEOL, // partial match, terminated by line end
             MatchTrimmedEOF  // partial match, terminated by end of source
-        };
-
-        // simple class for holding set of character ranges
-        class CharSet : public FixedArray<const CharRange>
-        {
-        public:
-            // empty character set
-            CharSet() :
-                FixedArray<const CharRange>()
-            {}
-
-            // initialize from static C array with known length
-            template <size_t length>
-            CharSet(const CharRange(&items)[length]) :
-                FixedArray<const CharRange>(items)
-            {}
-
-            // initialize from items pointer and given item count
-            CharSet(const CharRange *items, size_t count) :
-                FixedArray<const CharRange>(items, count)
-            {}
-
-            bool in(char_t value) const
-            {
-                // TODO: deal with signed/unsigned char types
-                // TODO: use binary search and force ordered ranges rule
-                auto val = CharValue(value);
-                for (auto &&r : *this) {
-                    if (val >= r.left && val <= r.right) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-        private:
-            // helper function to convert given char value to CharRange range value
-            template <typename T>
-            static unsigned int CharValue(T value)
-            {
-                return static_cast<unsigned int>(value);
-            }
-
-            // special case for signed char to prevent sign expansion
-            template <>
-            static unsigned int CharValue(char value)
-            {
-                return static_cast<unsigned int>(static_cast<unsigned char>(value));
-            }
         };
 
     protected:
@@ -388,28 +289,12 @@ namespace k_parser
         template <typename T>
         static inline int CompareTokens(const Token<T> &a, const Token<T> &b, SourceSize limit = -1);
 
-        // helper for comparison functions, trims comparison result to -1 0 +1
-        static inline int sign(int value)
-        {
-            if (value == 0) {
-                return value;
-            }
-
-            return value > 0 ? +1 : -1;
-        }
-
         // helper functions to help awsome c++ compiler with types
         template <typename T, size_t length>
-        static FixedArray<T> A(T (&items)[length])
-        {
-            return FixedArray<T>(items);
-        }
+        static FixedArray<T> A(T (&items)[length]) { return FixedArray<T>(items); }
 
         template <typename T, size_t length>
-        static Token<T> C(T (&items)[length])
-        {
-            return Token<T>(items);
-        }
+        static Token<T> C(T (&items)[length]) { return Token<T>(items); }
 
         // helper functions to check if token starts or ends with one of given sequences
 
@@ -640,7 +525,7 @@ namespace k_parser
             // TODO: refine diff comparison
             auto diff = int(*pa++) - int(*pb++);
             if (diff != 0) {
-                return sign(diff);
+                return Helpers::sign(diff);
             }
         }
 
@@ -648,7 +533,7 @@ namespace k_parser
             return 0;
         }
 
-        return sign(a.Length - b.Length);
+        return Helpers::sign(a.Length - b.Length);
     }
 
     template <typename Tsource, typename Tchecker>
