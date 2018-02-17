@@ -62,7 +62,7 @@ namespace k_parser
 
 
     // type for holding any character value
-    // (should have neough range to hold values of different char types)
+    // (should have enough range to hold values of different char types)
     typedef unsigned int CharType;
 
 
@@ -70,7 +70,7 @@ namespace k_parser
     class Helpers
     {
     public:
-        // helper function to convert given char value to CharRange range value
+        // helper function to convert given char value to CharType value
         template <typename T>
         static CharType CharValue(T value)
         {
@@ -127,7 +127,7 @@ namespace k_parser
             FixedArray<const CharRange>(items, count)
         {}
 
-        // check if given char value belings to this set of characters
+        // check if given char value belongs to this set of characters
         template <typename T>
         inline bool in(T value) const;
     };
