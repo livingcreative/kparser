@@ -103,6 +103,10 @@ namespace k_parser
     };
 
 
+    // iterator forward declaration
+    class ScannerSourceIterator;
+
+
     // -------------------------------------------------------------------------------
     //  ScannerSource
     // -------------------------------------------------------------------------------
@@ -123,34 +127,72 @@ namespace k_parser
         // actual character type definition
         typedef T char_t;
 
-        // current position inside source text
-        SourcePosition Position() const;
         // length of the whole source text
         SourceLength Length() const;
-
-        // end of source indicator
-        //      true when Position reached end of source (Position == Length)
-        //      false otherwise
-        bool IsEnd() const;
 
         // returns source character at current Position
         //      reading at invalid Position is not allowed
         //      Scanner won't read at invalid position
-        T CharCurrent() const;
-        // returns source character at specific offset form current position
-        //      reading at invalid position is not allowed
-        //      Scanner won't read at invalid position
-        T CharAt(SourcePosition offset) const;
+        T CharCurrent(const ScannerSourceIterator &it) const;
+
+        // converts source token to token
+        Token<T> SourceTokenToToken(const SourceToken &token) const;
+    };
+
+
+    // -------------------------------------------------------------------------------
+    //  ScannerSourceIterator
+    // -------------------------------------------------------------------------------
+    //
+    // source iterator - holds position inside source
+    // used by scanner to track current scanning position
+    class ScannerSourceIterator
+    {
+    public:
+        ScannerSourceIterator() :
+            p_position(0),
+            p_length(0)
+        {}
+
+        ScannerSourceIterator(const ScannerSourceIterator &source) :
+            p_position(source.p_position),
+            p_length(source.p_length)
+        {}
+
+        template <typename T>
+        ScannerSourceIterator(const T &source) :
+            p_position(0),
+            p_length(source.Length())
+        {}
+
+        operator bool() const { return IsEnd(); }
+
+        SourceLength operator-(const ScannerSourceIterator &rhs) const
+        {
+            return p_position - rhs.p_position;
+        }
+
+        // current position inside source text
+        SourcePosition Position() const { return p_position; }
+
+        // end of source indicator
+        //      true when Position reached end of source (Position == Length)
+        //      false otherwise
+        bool IsEnd() const { return p_position >= p_length; }
 
         // moves current Position by specified advance
         //      both negative and positive advances are allowed
         //      moving outside valid source text range is not allowed
         //      Scanner won't advance to invalid position except position
         //      where IsEnd will return true
-        void Advance(SourcePosition advance = 1);
+        void Advance(SourcePosition advance = 1)
+        {
+            p_position += advance;
+        }
 
-        // converts source token to token
-        Token<T> SourceTokenToToken(const SourceToken &token) const;
+    private:
+        SourcePosition p_position;
+        SourceLength   p_length;
     };
 
 
@@ -170,7 +212,6 @@ namespace k_parser
         // position is always initialized to 0
         ScannerStringSource(const T *source, SourceLength length) :
             p_source(source),
-            p_position(0),
             p_length(length)
         {}
 
@@ -178,17 +219,9 @@ namespace k_parser
 
         typedef T char_t;
 
-        SourcePosition Position() const { return p_position; }
         SourceLength Length() const { return p_length; }
-        bool IsEnd() const { return p_position >= p_length; }
 
-        T CharCurrent() const { return p_source[p_position]; }
-        T CharAt(SourcePosition offset) const { return p_source[p_position + offset]; }
-
-        void Advance(SourcePosition advance = 1)
-        {
-            p_position += advance;
-        }
+        T CharCurrent(const ScannerSourceIterator &it) const { return p_source[it.Position()]; }
 
         Token<T> SourceTokenToToken(const SourceToken &token) const
         {
@@ -196,9 +229,8 @@ namespace k_parser
         }
 
     private:
-        const T        *p_source;
-        SourcePosition  p_position;
-        SourceLength    p_length;
+        const T      *p_source;
+        SourceLength  p_length;
     };
 
 
@@ -215,11 +247,11 @@ namespace k_parser
     {
     public:
         // check if there's a space character at current source position
-        static inline bool IsSpace(const Tsource &source);
+        static inline bool IsSpace(const Tsource &source, const ScannerSourceIterator &it);
         // check if there's a line break character or sequence at current source position
         //      return 0 if there's no line break or
         //      length of line break sequence if there's one
-        static inline SourceLength IsBreak(const Tsource &source);
+        static inline SourceLength IsBreak(const Tsource &source, const ScannerSourceIterator &it);
     };
 
 
@@ -245,6 +277,9 @@ namespace k_parser
     public:
         // construct scanner for given source
         Scanner(Tsource &source);
+        // construct scanner for given source and existing iterator to start scanning from given position
+        //      iterator MUST be derived from given source
+        Scanner(Tsource &source, const ScannerSourceIterator &start);
 
     protected:
         // scan result returned by some of scanner functions
@@ -260,6 +295,9 @@ namespace k_parser
         // handy checks for ScanResult value
         static bool Match(ScanResult result) { return result != ScanResult::NoMatch; }
         static bool NotMatch(ScanResult result) { return result == ScanResult::NoMatch; }
+
+        // handy conversion of bool to ScanResult
+        static ScanResult Match(bool result) { return result ? ScanResult::Match : ScanResult::NoMatch; }
 
         // variable arguments AnyMatch implementation
         // tries to match one of given match functions
@@ -326,13 +364,13 @@ namespace k_parser
             return p_source.SourceTokenToToken(token);
         }
 
-        char_t CharCurrent() const { return p_source.CharCurrent(); }
+        char_t CharCurrent() const { return p_source.CharCurrent(p_it); }
         SourceLength LineCount() const { return p_lines; }
 
         // checks if there's at least count characters before source end
         bool HasCharacters(SourceLength count) const
         {
-            return count <= (p_source.Length() - p_source.Position());
+            return count <= (p_source.Length() - p_it.Position());
         }
 
         // skip all whitespace (and optionally, line break) characters till start of the
@@ -349,8 +387,8 @@ namespace k_parser
 
         // checks from ScannerSpecialCharChecker
 
-        bool IsSpace() const { return Tchecker::IsSpace(p_source); }
-        SourceLength IsBreak() const { return Tchecker::IsBreak(p_source); }
+        bool IsSpace() const { return Tchecker::IsSpace(p_source, p_it); }
+        SourceLength IsBreak() const { return Tchecker::IsBreak(p_source, p_it); }
 
         // check that there's a match of a character or sequence at current position
 
@@ -465,51 +503,60 @@ namespace k_parser
         };
 
     private:
-        Tsource      &p_source;
-        SourceLength  p_lines;
+        Tsource               &p_source;
+        ScannerSourceIterator  p_it;
+        SourceLength           p_lines;
     };
 
 
     template <typename Tsource>
-    bool ScannerSpecialCharChecker<Tsource>::IsSpace(const Tsource &source)
+    bool ScannerSpecialCharChecker<Tsource>::IsSpace(const Tsource &source, const ScannerSourceIterator &it)
     {
-        if (source.IsEnd()) {
+        if (it) {
             return false;
         }
 
-        auto c = source.CharCurrent();
+        auto c = source.CharCurrent(it);
 
         return c >= 0 && c <= ' ' && c != '\r' && c != '\n';
     }
 
     template <typename Tsource>
-    SourceLength ScannerSpecialCharChecker<Tsource>::IsBreak(const Tsource &source)
+    SourceLength ScannerSpecialCharChecker<Tsource>::IsBreak(const Tsource &source, const ScannerSourceIterator &it)
     {
-        if (source.IsEnd()) {
+        if (it) {
             return 0;
         }
 
-        auto c = source.CharCurrent();
-        SourceLength brk = 0;
+        auto seqit = it;
+        auto c = source.CharCurrent(seqit);
 
         if (c == '\r') {
-            ++brk;
-            c = source.CharAt(brk);
+            seqit.Advance();
+            c = source.CharCurrent(seqit);
         }
 
         if (c == '\n') {
-            ++brk;
+            seqit.Advance();
         }
 
-        return brk;
+        return seqit - it;
     }
 
 
     template <typename Tsource, typename Tchecker>
     Scanner<Tsource, Tchecker>::Scanner(Tsource &source) :
         p_source(source),
+        p_it(source),
         p_lines(0)
-    { }
+    {}
+
+    template <typename Tsource, typename Tchecker>
+    Scanner<Tsource, Tchecker>::Scanner(Tsource &source, const ScannerSourceIterator &start) :
+        p_source(source),
+        p_it(start),
+        p_lines(0)
+    {}
 
     template <typename Tsource, typename Tchecker>
     template <typename Tc>
@@ -657,21 +704,21 @@ namespace k_parser
     template <typename Tsource, typename Tchecker>
     bool Scanner<Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline)
     {
-        token = SourceToken(p_source.Position());
+        token = SourceToken(p_it.Position());
 
         while (true) {
-            if (Tchecker::IsSpace(p_source)) {
-                p_source.Advance();
+            if (Tchecker::IsSpace(p_source, p_it)) {
+                p_it.Advance();
                 ++token.Length;
             } else {
-                auto br = Tchecker::IsBreak(p_source);
+                auto br = Tchecker::IsBreak(p_source, p_it);
 
                 if (br == 0) {
-                    return !p_source.IsEnd();
+                    return !p_it;
                 }
 
                 if (nextline) {
-                    p_source.Advance(br);
+                    p_it.Advance(br);
                     token.Length += br;
                     ++p_lines;
                 } else {
@@ -686,10 +733,10 @@ namespace k_parser
     bool Scanner<Tsource, Tchecker>::Check(T c, bool increment)
     {
         // TODO: handle different type char comparison
-        bool result = !p_source.IsEnd() && p_source.CharCurrent() == c;
+        bool result = !p_it && p_source.CharCurrent(p_it) == c;
 
         if (result && increment) {
-            p_source.Advance();
+            p_it.Advance();
         }
 
         return result;
@@ -703,11 +750,11 @@ namespace k_parser
             HasCharacters(s.Length) &&
             CompareTokens(
                 s,
-                p_source.SourceTokenToToken(SourceToken(p_source.Position(), s.Length))
+                p_source.SourceTokenToToken(SourceToken(p_it.Position(), s.Length))
             ) == 0;
 
         if (result && increment) {
-            p_source.Advance(s.Length);
+            p_it.Advance(s.Length);
         }
 
         return result;
@@ -729,7 +776,7 @@ namespace k_parser
     template <typename T>
     bool Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, bool increment)
     {
-        auto pos = p_source.Position();
+        auto pos = p_it.Position();
         auto result = CheckAny(characters, increment) != NO_MATCH;
 
         token = SourceToken(pos, result ? 1 : 0);
@@ -762,7 +809,7 @@ namespace k_parser
     bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, bool increment)
     {
         auto length = 0;
-        auto pos = p_source.Position();
+        auto pos = p_it.Position();
 
         bool result = CheckAny(compounds, length, increment) != NO_MATCH;
 
@@ -783,7 +830,7 @@ namespace k_parser
 
         auto found = std::find_if(
             characters.begin(), characters.end(),
-            [const &t](const auto &c) {
+            [&t](const auto &c) {
                 return Helpers::CharValue(c) == Helpers::CharValue(t.Text[0]);
             }
         );
@@ -815,14 +862,14 @@ namespace k_parser
     template <typename Tinner>
     bool Scanner<Tsource, Tchecker>::GetCharToken(bool nextline, Tinner inner, SourceToken &token, bool increment)
     {
-        token = SourceToken(p_source.Position(), 0);
+        token = SourceToken(p_it.Position());
 
         auto result = false;
-        auto len = Tchecker::IsBreak(p_source);
+        auto len = Tchecker::IsBreak(p_source, p_it);
 
         if (len == 0) {
             len = caller<Tinner>::call(inner);
-            if (len == 0 && p_source.IsEnd()) {
+            if (len == 0 && p_it) {
                 return false;
             }
             token.Length = len == 0 ? 1 : len;
@@ -836,7 +883,7 @@ namespace k_parser
         }
 
         if (result && increment) {
-            p_source.Advance(token.Length);
+            p_it.Advance(token.Length);
         }
 
         return result;
@@ -848,10 +895,10 @@ namespace k_parser
     {
         auto result =
             GetCharToken(nextline, inner, token, false) &&
-            (token.Length > 1 || set.in(p_source.CharCurrent()));
+            (token.Length > 1 || set.in(p_source.CharCurrent(p_it)));
 
         if (result && increment) {
-            p_source.Advance(token.Length);
+            p_it.Advance(token.Length);
         }
 
         return result;
@@ -862,7 +909,7 @@ namespace k_parser
     typename Scanner<Tsource, Tchecker>::ScanResult
     Scanner<Tsource, Tchecker>::ContinueWhile(const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment)
     {
-        token = SourceToken(p_source.Position());
+        token = SourceToken(p_it.Position());
 
         SourceToken cs;
         while (CheckCharToken(whileset, multiline, inner, cs)) {
@@ -870,7 +917,7 @@ namespace k_parser
         }
 
         if (!increment) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
         }
 
         return ScanResult::Match;
@@ -881,7 +928,7 @@ namespace k_parser
     typename Scanner<Tsource, Tchecker>::ScanResult
     Scanner<Tsource, Tchecker>::ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment)
     {
-        token = SourceToken(p_source.Position());
+        token = SourceToken(p_it.Position());
 
         auto result = ScanResult::NoMatch;
 
@@ -905,13 +952,13 @@ namespace k_parser
                 continue;
             }
 
-            p_source.Advance(cs.Length);
+            p_it.Advance(cs.Length);
             token.Length += cs.Length;
         }
 
         if (result != ScanResult::Match)
         {
-            if (p_source.IsEnd()) {
+            if (p_it) {
                 result = ScanResult::MatchTrimmedEOF;
             } else {
                 result = ScanResult::MatchTrimmedEOL;
@@ -919,7 +966,7 @@ namespace k_parser
         }
 
         if (!increment) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
         }
 
         return result;
@@ -939,7 +986,7 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (!increment) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
         }
 
         return result;
@@ -950,7 +997,7 @@ namespace k_parser
     typename Scanner<Tsource, Tchecker>::ScanResult
     Scanner<Tsource, Tchecker>::FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
     {
-        token = SourceToken(p_source.Position());
+        token = SourceToken(p_it.Position());
 
         if (!Check(from)) {
             return ScanResult::NoMatch;
@@ -963,12 +1010,12 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (notemptywhile && token.Length <= from.Length) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
             return ScanResult::NoMatch;
         }
 
         if (!increment) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
         }
 
         return result;
@@ -1000,7 +1047,7 @@ namespace k_parser
     typename Scanner<Tsource, Tchecker>::ScanResult
     Scanner<Tsource, Tchecker>::FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
     {
-        token = SourceToken(p_source.Position());
+        token = SourceToken(p_it.Position());
 
         if (!Check(fromtoken)) {
             return ScanResult::NoMatch;
@@ -1015,7 +1062,7 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (!increment) {
-            p_source.Advance(-token.Length);
+            p_it.Advance(-token.Length);
         }
 
         return result;
