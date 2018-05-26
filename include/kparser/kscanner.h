@@ -296,7 +296,7 @@ namespace k_parser
     protected:
         // handy checks for ScanResult value
         static constexpr bool Match(ScanResult result) noexcept { return result != ScanResult::NoMatch; }
-        static constexpr bool NotMatch(ScanResult result) noexcept { return result == ScanResult::NoMatch; }
+        static constexpr bool NoMatch(ScanResult result) noexcept { return result == ScanResult::NoMatch; }
 
         // handy conversion of bool to ScanResult
         static constexpr ScanResult Match(bool result) noexcept { return result ? ScanResult::Match : ScanResult::NoMatch; }
