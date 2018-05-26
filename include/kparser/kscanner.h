@@ -167,30 +167,62 @@ namespace k_parser
             p_length(source.Length())
         {}
 
-        constexpr operator bool() const noexcept { return IsEnd(); }
+        // end of source indicator
+        //      true when Position reached end of source (Position == Length)
+        //      false otherwise
+        constexpr operator bool() const noexcept { return p_position >= p_length; }
+
+        constexpr ScannerSourceIterator& operator=(const ScannerSourceIterator &source) noexcept
+        {
+            p_position = source.p_position;
+            p_length = source.p_length;
+            return *this;
+        }
+
+        // iterator advance/decrement operators
 
         constexpr SourceLength operator-(const ScannerSourceIterator &rhs) const noexcept
         {
             return p_position - rhs.p_position;
         }
 
+        constexpr ScannerSourceIterator operator+(SourceLength advance) const noexcept
+        {
+            return ScannerSourceIterator(p_position + advance, p_length);
+        }
+
+        constexpr ScannerSourceIterator& operator+=(SourceLength advance) noexcept
+        {
+            p_position += advance;
+            return *this;
+        }
+
+        constexpr ScannerSourceIterator operator-(SourceLength advance) const noexcept
+        {
+            return ScannerSourceIterator(p_position - advance, p_length);
+        }
+
+        constexpr ScannerSourceIterator& operator-=(SourceLength advance) noexcept
+        {
+            p_position -= advance;
+            return *this;
+        }
+
         // current position inside source text
         constexpr SourcePosition Position() const noexcept { return p_position; }
 
-        // end of source indicator
-        //      true when Position reached end of source (Position == Length)
-        //      false otherwise
-        constexpr bool IsEnd() const noexcept { return p_position >= p_length; }
-
-        // moves current Position by specified advance
-        //      both negative and positive advances are allowed
-        //      moving outside valid source text range is not allowed
-        //      Scanner won't advance to invalid position except position
-        //      where IsEnd will return true
-        constexpr void Advance(SourcePosition advance = 1) noexcept
+        // make SourceToken from to iterators
+        //      b must be equal or further than a
+        static constexpr SourceToken difftotoken(const ScannerSourceIterator &a, const ScannerSourceIterator &b) noexcept
         {
-            p_position += advance;
+            return SourceToken(a.p_position, b.p_position - a.p_position);
         }
+
+    private:
+        constexpr ScannerSourceIterator(SourcePosition position, SourceLength length) noexcept :
+            p_position(position),
+            p_length(length)
+        {}
 
     private:
         SourcePosition p_position;
@@ -529,12 +561,12 @@ namespace k_parser
         auto c = source.CharCurrent(seqit);
 
         if (c == '\r') {
-            seqit.Advance();
+            seqit += 1;
             c = source.CharCurrent(seqit);
         }
 
         if (c == '\n') {
-            seqit.Advance();
+            seqit += 1;
         }
 
         return seqit - it;
@@ -593,7 +625,7 @@ namespace k_parser
             SourceToken next;
             result = SequenceMatch(next, args...);
             if (result == ScanResult::NoMatch) {
-                p_source.Advance(-token.Length);
+                p_source -= token.Length;
             } else {
                 token.Length += next.Length;
             }
@@ -685,7 +717,7 @@ namespace k_parser
 
         while (true) {
             if (Tchecker::IsSpace(p_source, p_it)) {
-                p_it.Advance();
+                p_it += 1;
                 ++token.Length;
             } else {
                 auto br = Tchecker::IsBreak(p_source, p_it);
@@ -695,7 +727,7 @@ namespace k_parser
                 }
 
                 if (nextline) {
-                    p_it.Advance(br);
+                    p_it += br;
                     token.Length += br;
                     ++p_lines;
                 } else {
@@ -713,7 +745,7 @@ namespace k_parser
         bool result = !p_it && p_source.CharCurrent(p_it) == c;
 
         if (result && increment) {
-            p_it.Advance();
+            it += 1;
         }
 
         return result;
@@ -731,7 +763,7 @@ namespace k_parser
             ) == 0;
 
         if (result && increment) {
-            p_it.Advance(s.Length);
+            it += s.Length;
         }
 
         return result;
@@ -860,7 +892,7 @@ namespace k_parser
         }
 
         if (result && increment) {
-            p_it.Advance(token.Length);
+            p_it += token.Length;
         }
 
         return result;
@@ -875,7 +907,7 @@ namespace k_parser
             (token.Length > 1 || set.in(p_source.CharCurrent(p_it)));
 
         if (result && increment) {
-            p_it.Advance(token.Length);
+            p_it += token.Length;
         }
 
         return result;
@@ -894,7 +926,7 @@ namespace k_parser
         }
 
         if (!increment) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
         }
 
         return ScanResult::Match;
@@ -929,7 +961,7 @@ namespace k_parser
                 continue;
             }
 
-            p_it.Advance(cs.Length);
+            p_it += cs.Length;
             token.Length += cs.Length;
         }
 
@@ -943,7 +975,7 @@ namespace k_parser
         }
 
         if (!increment) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
         }
 
         return result;
@@ -963,7 +995,7 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (!increment) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
         }
 
         return result;
@@ -987,12 +1019,12 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (notemptywhile && token.Length <= from.Length) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
             return ScanResult::NoMatch;
         }
 
         if (!increment) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
         }
 
         return result;
@@ -1039,7 +1071,7 @@ namespace k_parser
         token.Length += cs.Length;
 
         if (!increment) {
-            p_it.Advance(-token.Length);
+            p_it -= token.Length;
         }
 
         return result;
