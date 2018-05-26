@@ -349,8 +349,8 @@ namespace k_cppparser
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(A(p_compounds), stok) ||
-                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok);
+                CheckAny(A(p_compounds), stok, p_it) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok, p_it);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
@@ -381,7 +381,8 @@ namespace k_cppparser
         }
 
         int length;
-        if (CheckAny(A(p_escapes), length, false) != NO_MATCH) {
+        auto it = p_it;
+        if (CheckAny(A(p_escapes), length, it) != NO_MATCH) {
             return length;
         }
 
@@ -401,7 +402,8 @@ namespace k_cppparser
     int CPPScanner<Tsource>::IsLineBreakMerge()
     {
         int length;
-        if (CheckAny(A(p_linemerge), length, false) != NO_MATCH) {
+        auto it = p_it;
+        if (CheckAny(A(p_linemerge), length, it) != NO_MATCH) {
             return length;
         }
 
@@ -456,13 +458,13 @@ namespace k_cppparser
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanIntegerPostfix()
     {
-        return CheckAny(C("lLuU")) != NO_MATCH;
+        return CheckAny(C("lLuU"), p_it) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CPPScanner<Tsource>::ScanRealPostfix()
     {
-        return CheckAny(C("fFdD")) != NO_MATCH;
+        return CheckAny(C("fFdD"), p_it) != NO_MATCH;
     }
 
     template <typename Tsource>
@@ -494,11 +496,11 @@ namespace k_cppparser
 
         if (Match(result)) {
             // optional E/e part
-            if (CheckAny(C("eE")) != NO_MATCH) {
+            if (CheckAny(C("eE"), p_it) != NO_MATCH) {
                 ++token.Length;
 
                 // optional +/- after exponent sign
-                if (CheckAny(C("+-")) != NO_MATCH) {
+                if (CheckAny(C("+-"), p_it) != NO_MATCH) {
                     ++token.Length;
                 }
 

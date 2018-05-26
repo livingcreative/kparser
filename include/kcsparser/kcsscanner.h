@@ -389,8 +389,8 @@ namespace k_csparser
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(A(p_compounds), stok) ||
-                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok);
+                CheckAny(A(p_compounds), stok, p_it) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok, p_it);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
@@ -422,7 +422,8 @@ namespace k_csparser
 
         if (context == eccCharacter) {
             int length;
-            if (CheckAny(A(p_escapes), length, false) != NO_MATCH) {
+            auto it = p_it;
+            if (CheckAny(A(p_escapes), length, it) != NO_MATCH) {
                 return length;
             }
 
@@ -542,13 +543,13 @@ namespace k_csparser
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanIntegerPostfix()
     {
-        return CheckAny(C("lLuU")) != NO_MATCH;
+        return CheckAny(C("lLuU"), p_it) != NO_MATCH;
     }
 
     template <typename Tsource>
     bool CSScanner<Tsource>::ScanRealPostfix()
     {
-        return CheckAny(C("fFdDmM")) != NO_MATCH;
+        return CheckAny(C("fFdDmM"), p_it) != NO_MATCH;
     }
 
     template <typename Tsource>
@@ -580,11 +581,11 @@ namespace k_csparser
 
         if (Match(result)) {
             // optional E/e part
-            if (CheckAny(C("eE")) != NO_MATCH) {
+            if (CheckAny(C("eE"), p_it) != NO_MATCH) {
                 ++token.Length;
 
                 // optional +/- after exponent sign
-                if (CheckAny(C("+-")) != NO_MATCH) {
+                if (CheckAny(C("+-"), p_it) != NO_MATCH) {
                     ++token.Length;
                 }
 

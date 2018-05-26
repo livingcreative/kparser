@@ -358,6 +358,15 @@ namespace k_parser
         template <typename Tc, typename... Args>
         static constexpr ScanResult SequenceMatch(SourceToken &token, Tc first, Args... args) noexcept;
 
+        // 
+        template <typename Tc>
+        static constexpr ScanResult OptionalMatch(SourceToken &token, Tc func) noexcept
+        {
+            auto result = func(token);
+            return Match(result) ? result : ScanResult::Match;
+        }
+
+
         // helper functions to compare tokens of same or different character types
         template <typename T1, typename T2>
         static constexpr int CompareTokens(
@@ -397,9 +406,9 @@ namespace k_parser
         constexpr SourceLength LineCount() const noexcept { return p_lines; }
 
         // checks if there's at least count characters before source end
-        constexpr bool HasCharacters(SourceLength count) const noexcept
+        constexpr bool HasCharacters(const ScannerSourceIterator &it, SourceLength count) const noexcept
         {
-            return count <= (p_source.Length() - p_it.Position());
+            return count <= (p_source.Length() - it.Position());
         }
 
         // skip all whitespace (and optionally, line break) characters till start of the
@@ -419,13 +428,13 @@ namespace k_parser
         constexpr bool IsSpace() const noexcept { return Tchecker::IsSpace(p_source, p_it); }
         constexpr SourceLength IsBreak() const noexcept { return Tchecker::IsBreak(p_source, p_it); }
 
-        // check that there's a match of a character or sequence at current position
+        // check that there's a match of a character or sequence at "it" position
 
         template <typename T>
-        bool Check(T c, bool increment = true);
+        bool Check(T c, ScannerSourceIterator &it);
 
         template <typename T>
-        bool Check(const Token<T> &s, bool increment = true);
+        bool Check(const Token<T> &s, ScannerSourceIterator &it);
 
         // following CheckAny functions are sort of high-level versions of Check to help
         // perform checks against multiple characters or sequences
@@ -433,21 +442,21 @@ namespace k_parser
         static constexpr int NO_MATCH = -1;
 
         template <typename T>
-        int CheckAny(const Token<T> &characters, bool increment = true);
+        int CheckAny(const Token<T> &characters, ScannerSourceIterator &it);
 
         template <typename T>
-        bool CheckAny(const Token<T> &characters, SourceToken &token, bool increment = true);
+        bool CheckAny(const Token<T> &characters, SourceToken &token, ScannerSourceIterator &it);
 
         template <typename T>
         int CheckAny(
-            const FixedArray<const Token<T>> &compounds, int &length,
-            bool increment = true
+            const FixedArray<const Token<T>> &compounds, SourceLength &length,
+            ScannerSourceIterator &it
         );
 
         template <typename T>
         bool CheckAny(
             const FixedArray<const Token<T>> &compounds, SourceToken &token,
-            bool increment = true
+            ScannerSourceIterator &it
         );
 
         // helper functions to check already scanned token
@@ -533,8 +542,10 @@ namespace k_parser
 
     private:
         const Tsource         &p_source;
-        ScannerSourceIterator  p_it;
         SourceLength           p_lines;
+
+    protected: // TODO: temp. it's accessible
+        ScannerSourceIterator  p_it;
     };
 
 
@@ -739,12 +750,12 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::Check(T c, bool increment)
+    bool Scanner<Tsource, Tchecker>::Check(T c, ScannerSourceIterator &it)
     {
         // TODO: handle different type char comparison
-        bool result = !p_it && p_source.CharCurrent(p_it) == c;
+        bool result = !it && p_source.CharCurrent(it) == c;
 
-        if (result && increment) {
+        if (result) {
             it += 1;
         }
 
@@ -753,16 +764,16 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::Check(const Token<T> &s, bool increment)
+    bool Scanner<Tsource, Tchecker>::Check(const Token<T> &s, ScannerSourceIterator &it)
     {
         bool result =
-            HasCharacters(s.Length) &&
+            HasCharacters(it, s.Length) &&
             CompareTokens(
                 s,
-                p_source.SourceTokenToToken(SourceToken(p_it.Position(), s.Length))
+                p_source.SourceTokenToToken(SourceToken(it.Position(), s.Length))
             ) == 0;
 
-        if (result && increment) {
+        if (result) {
             it += s.Length;
         }
 
@@ -771,11 +782,11 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, bool increment)
+    int Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, ScannerSourceIterator &it)
     {
         auto found = std::find_if(
             characters.begin(), characters.end(),
-            [increment, this](const auto &c) { return Check(c, increment); }
+            [&it, this](const auto c) { return Check(c, it); }
         );
 
         return found == characters.end() ? NO_MATCH : int(found - characters.begin());
@@ -783,10 +794,10 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, bool increment)
+    bool Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, ScannerSourceIterator &it)
     {
-        auto pos = p_it.Position();
-        auto result = CheckAny(characters, increment) != NO_MATCH;
+        auto pos = it.Position();
+        auto result = CheckAny(characters, it) != NO_MATCH;
 
         token = SourceToken(pos, result ? 1 : 0);
 
@@ -795,13 +806,13 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, int &length, bool increment)
+    int Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceLength &length, ScannerSourceIterator &it)
     {
         length = 0;
 
         auto found = std::find_if(
             compounds.begin(), compounds.end(),
-            [increment, this](const auto &c) { return Check(c, increment); }
+            [&it, this](const auto &c) { return Check(c, it); }
         );
 
         if (found == compounds.end()) {
@@ -815,12 +826,12 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, bool increment)
+    bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, ScannerSourceIterator &it)
     {
         auto length = 0;
-        auto pos = p_it.Position();
+        auto pos = it.Position();
 
-        bool result = CheckAny(compounds, length, increment) != NO_MATCH;
+        bool result = CheckAny(compounds, length, it) != NO_MATCH;
 
         token = SourceToken(pos, length);
 
@@ -943,13 +954,13 @@ namespace k_parser
 
         SourceToken cs;
         while (GetCharToken(multiline, inner, cs, false)) {
-            if (allownesting && Check(fromtoken)) {
+            if (allownesting && Check(fromtoken, p_it)) {
                 ++nestinglevel;
                 token.Length += fromtoken.Length;
                 continue;
             }
 
-            if (Check(totoken)) {
+            if (Check(totoken, p_it)) {
                 --nestinglevel;
                 token.Length += totoken.Length;
 
@@ -1008,7 +1019,7 @@ namespace k_parser
     {
         token = SourceToken(p_it.Position());
 
-        if (!Check(from)) {
+        if (!Check(from, p_it)) {
             return ScanResult::NoMatch;
         }
 
@@ -1058,7 +1069,7 @@ namespace k_parser
     {
         token = SourceToken(p_it.Position());
 
-        if (!Check(fromtoken)) {
+        if (!Check(fromtoken, p_it)) {
             return ScanResult::NoMatch;
         }
 
