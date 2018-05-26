@@ -278,10 +278,10 @@ namespace k_parser
 
     public:
         // construct scanner for given source
-        Scanner(const Tsource &source);
+        constexpr Scanner(const Tsource &source) noexcept;
         // construct scanner for given source and existing iterator to start scanning from given position
         //      iterator MUST be derived from given source
-        Scanner(const Tsource &source, const ScannerSourceIterator &start);
+        constexpr Scanner(const Tsource &source, const ScannerSourceIterator &start) noexcept;
 
     protected:
         // scan result returned by some of scanner functions
@@ -328,7 +328,7 @@ namespace k_parser
 
         // helper functions to compare tokens of same or different character types
         template <typename T1, typename T2>
-        static inline int CompareTokens(
+        static constexpr int CompareTokens(
             const Token<T1> &a, const Token<T2> &b,
             SourceSize limit = -1
         );
@@ -349,16 +349,16 @@ namespace k_parser
         // helper functions to check if token starts or ends with one of given sequences
 
         template <typename T>
-        bool StartsWith(const SourceToken &token, const Token<T> &sequence);
+        constexpr bool StartsWith(const SourceToken &token, const Token<T> &sequence) noexcept;
 
         template <typename T>
-        int StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences);
+        constexpr int StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept;
 
         template <typename T>
-        bool EndsWith(const SourceToken &token, const Token<T> &sequence);
+        constexpr bool EndsWith(const SourceToken &token, const Token<T> &sequence) noexcept;
 
         template <typename T>
-        int EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences);
+        constexpr int EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept;
 
         // helper function to convert SourceToken to token
         constexpr token_t SourceTokenToToken(const SourceToken &token) const noexcept
@@ -379,9 +379,9 @@ namespace k_parser
         // next possible token
         // optionally returns skipped sequence as a source token
 
-        bool SkipToToken(SourceToken &token, bool nextline = true);
+        constexpr bool SkipToToken(SourceToken &token, bool nextline = true) noexcept;
 
-        bool SkipToToken(bool nextline = true)
+        constexpr bool SkipToToken(bool nextline = true) noexcept
         {
             SourceToken token;
             return SkipToToken(token, nextline);
@@ -547,14 +547,14 @@ namespace k_parser
 
 
     template <typename Tsource, typename Tchecker>
-    Scanner<Tsource, Tchecker>::Scanner(const Tsource &source) :
+    constexpr Scanner<Tsource, Tchecker>::Scanner(const Tsource &source) noexcept :
         p_source(source),
         p_it(source),
         p_lines(0)
     {}
 
     template <typename Tsource, typename Tchecker>
-    Scanner<Tsource, Tchecker>::Scanner(const Tsource &source, const ScannerSourceIterator &start) :
+    constexpr Scanner<Tsource, Tchecker>::Scanner(const Tsource &source, const ScannerSourceIterator &start) noexcept :
         p_source(source),
         p_it(start),
         p_lines(0)
@@ -608,7 +608,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T1, typename T2>
-    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit)
+    constexpr int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit)
     {
         auto minlen = a.Length < b.Length ? a.Length : b.Length;
 
@@ -656,7 +656,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const Token<T> &sequence)
+    constexpr bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const Token<T> &sequence) noexcept
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -667,7 +667,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
+    constexpr int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept
     {
         auto found = std::find_if(
             sequences.begin(), sequences.end(),
@@ -679,7 +679,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const Token<T> &sequence)
+    constexpr bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const Token<T> &sequence) noexcept
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -693,7 +693,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
+    constexpr int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept
     {
         auto found = std::find_if(
             sequences.begin(), sequences.end(),
@@ -704,7 +704,7 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    bool Scanner<Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline)
+    constexpr bool Scanner<Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline) noexcept
     {
         token = SourceToken(p_it.Position());
 
