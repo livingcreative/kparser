@@ -83,18 +83,6 @@ namespace k_parser
         {
             return static_cast<CharType>(static_cast<unsigned char>(value));
         }
-
-        // helper for comparison functions, trims comparison result to -1 0 +1
-        //      NOTE: this is sort of copypasta from kcommon c_util.h, currently
-        //            parser doesn't depend on other headers
-        static constexpr int sign(int value) noexcept
-        {
-            if (value == 0) {
-                return value;
-            }
-
-            return value > 0 ? +1 : -1;
-        }
     };
 
 

@@ -333,13 +333,8 @@ namespace k_parser
             SourceSize limit = -1
         );
 
-        template <typename T>
-        static inline int CompareTokens(
-            const Token<T> &a, const Token<T> &b,
-            SourceSize limit = -1
-        );
-
         // helper functions to help awsome c++ compiler with types
+
         template <typename T, size_t length>
         static constexpr FixedArray<T> A(T (&items)[length]) noexcept { return FixedArray<T>(items); }
 
@@ -623,7 +618,7 @@ namespace k_parser
             // TODO: refine diff comparison
             auto diff = int(*pa++) - int(*pb++);
             if (diff != 0) {
-                return Helpers::sign(diff);
+                return diff;
             }
         }
 
@@ -631,27 +626,7 @@ namespace k_parser
             return 0;
         }
 
-        return Helpers::sign(a.Length - b.Length);
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T> &a, const Token<T> &b, SourceSize limit)
-    {
-        auto minlen = a.Length < b.Length ? a.Length : b.Length;
-
-        if (limit >= 0 && minlen > limit) {
-            minlen = limit;
-        }
-
-        auto result = memcmp(a.Text, b.Text, minlen * sizeof(T));
-        if (result != 0) {
-            return result;
-        } else if (limit >= 0) {
-            return 0;
-        } else {
-            return Helpers::sign(a.Length - b.Length);
-        }
+        return a.Length - b.Length;
     }
 
     template <typename Tsource, typename Tchecker>
