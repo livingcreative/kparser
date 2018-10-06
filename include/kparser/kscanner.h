@@ -304,10 +304,6 @@ namespace k_parser
         typedef Tsource source_t;
         typedef Token<char_t> token_t;
 
-        // bring some types from khelpers.h for ease of use in specific scanners
-        typedef CharRange CharRange;
-        typedef CharSet CharSet;
-
     public:
         // construct scanner for given source
         constexpr Scanner(const Tsource &source) noexcept;

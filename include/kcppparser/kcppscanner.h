@@ -78,7 +78,7 @@ namespace k_cppparser
         bool ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
 
         template <typename Tinner>
-        ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
+        typename k_parser::Scanner<Tsource>::ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
 
         bool ScanCharacter(k_parser::SourceToken &token);
         bool ScanIntegerPostfix();
@@ -90,6 +90,7 @@ namespace k_cppparser
 
     private:
         typedef k_parser::Token<char> TokenChar;
+        typedef typename k_parser::CharRange CharRange;
 
         static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
@@ -439,7 +440,7 @@ namespace k_cppparser
 
     template <typename Tsource>
     template <typename Tinner>
-    typename CPPScanner<Tsource>::ScanResult CPPScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult CPPScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
     {
         return FromTo(C("\""), C("\""), false, inner, false, token);
     }

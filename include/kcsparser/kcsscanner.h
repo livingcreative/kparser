@@ -85,10 +85,10 @@ namespace k_csparser
         bool ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
 
         template <typename Tinner>
-        ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
+        typename k_parser::Scanner<Tsource>::ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
 
         template <typename Tinner>
-        ScanResult ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token);
+        typename k_parser::Scanner<Tsource>::ScanResult ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token);
 
         bool ScanCharacter(k_parser::SourceToken &token);
         bool ScanIntegerPostfix();
@@ -100,6 +100,7 @@ namespace k_csparser
 
     private:
         typedef k_parser::Token<char> TokenChar;
+        typedef typename k_parser::CharRange CharRange;
 
         static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
@@ -498,14 +499,14 @@ namespace k_csparser
 
     template <typename Tsource>
     template <typename Tinner>
-    typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
     {
         return FromTo(C("\""), C("\""), false, inner, false, token);
     }
 
     template <typename Tsource>
     template <typename Tinner>
-    typename CSScanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token)
     {
         auto result = FromTo(C("@\""), C("\""), true, inner, false, token);
 
