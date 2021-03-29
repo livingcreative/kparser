@@ -3,7 +3,7 @@
 
     Utilities library for parsers programming
 
-    (c) livingcreative, 2017
+    (c) livingcreative, 2017 - 2021
 
     https://github.com/livingcreative/kparser
 
@@ -77,32 +77,31 @@ namespace k_csparser
             eccCharacter
         };
 
-        int IsEscape(EscapeCheckContext context);
-        int ScanInterpolationComment(bool multiline);
-        int InterpolationInnerScan(bool checkcharescape, bool multiline);
+        k_parser::SourceLength IsEscape(EscapeCheckContext context, const k_parser::ScannerSourceIterator &it) const;
+        k_parser::SourceLength ScanInterpolationComment(bool multiline, const k_parser::ScannerSourceIterator &it) const;
+        k_parser::SourceLength InterpolationInnerScan(bool checkcharescape, bool multiline, const k_parser::ScannerSourceIterator &it) const;
 
-        bool ScanIdent(k_parser::SourceToken &token);
-        bool ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
-
-        template <typename Tinner>
-        typename k_parser::Scanner<Tsource>::ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
+        bool ScanIdent(k_parser::ScannerSourceIterator &it) const;
+        bool ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
 
         template <typename Tinner>
-        typename k_parser::Scanner<Tsource>::ScanResult ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token);
+        typename k_parser::Scanner<Tsource>::ScanResult ScanString(Tinner inner, k_parser::ScannerSourceIterator &it) const;
 
-        bool ScanCharacter(k_parser::SourceToken &token);
-        bool ScanIntegerPostfix();
-        bool ScanRealPostfix();
-        bool ScanHexadecimal(k_parser::SourceToken &token);
-        bool ScanDecimal(k_parser::SourceToken &token);
-        bool ScanReal(k_parser::SourceToken &token);
-        bool ScanPreprocessor(k_parser::SourceToken &token);
+        template <typename Tinner>
+        typename k_parser::Scanner<Tsource>::ScanResult ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::ScannerSourceIterator &it) const;
+
+        bool ScanCharacter(k_parser::ScannerSourceIterator &it) const;
+        bool ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const;
+        bool ScanRealPostfix(k_parser::ScannerSourceIterator &it) const;
+        bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanReal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanPreprocessor(k_parser::ScannerSourceIterator &it) const;
 
     private:
         typedef k_parser::Token<char> TokenChar;
         typedef typename k_parser::CharRange CharRange;
 
-        static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
         static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
         static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
@@ -115,11 +114,6 @@ namespace k_csparser
         static const TokenChar p_keywords[75];
     };
 
-
-    template <typename Tsource>
-    const typename CSScanner<Tsource>::CharRange CSScanner<Tsource>::p_all[] = {
-        { L'\x0001', L'\xFFFF' }
-    };
 
     template <typename Tsource>
     const typename CSScanner<Tsource>::CharRange CSScanner<Tsource>::p_numeric[] = {
@@ -198,32 +192,33 @@ namespace k_csparser
     template <typename Tsource>
     typename CSScanner<Tsource>::Token CSScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data)
     {
-        k_parser::SourceToken stok;
-        Token result;
-        if (SkipToToken(stok)) {
-            if (includespacers && stok.Length > 0) {
-                result.Type = TokenType::Spacer;
-                result.SourceToken = stok;
+        auto it = It();
+
+        if (SkipToToken(it)) {
+            if (includespacers && PeekToken(it)) {
+                return Token(TokenType::Spacer, Scanner::ReadToken(it));
             } else {
-                result = ScanToken(data);
+                DiscardToken(it);
+                return ScanToken(data);
             }
         }
-        return result;
+
+        DiscardToken(it);
+        return Token();
     }
 
     template <typename Tsource>
     typename CSScanner<Tsource>::Token CSScanner<Tsource>::ScanToken(k_parser::IncrementalScanData &data)
     {
         Token token;
-        k_parser::SourceToken stok;
+        auto it = It();
 
         if (data.Current != int(IncrementalCurrentType::None)) {
             switch (data.Current) {
                 case IncrementalCurrentType::Comment: {
                     token.Type = TokenType::Comment;
 
-                    int level = 1;
-                    auto result = ContinueTo(C(""), C("*/"), true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(), C("*/"), true, nullptr, it);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -235,8 +230,7 @@ namespace k_csparser
                 case IncrementalCurrentType::VerbatimString: {
                     token.Type = TokenType::String;
 
-                    int level = 1;
-                    auto result = ContinueTo(C(""), C("\""), true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(), C("\""), true, nullptr, it);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -246,7 +240,7 @@ namespace k_csparser
                 }
             }
 
-            token.SourceToken = stok;
+            token.SourceToken = Scanner::ReadToken(it);
 
             return token;
         }
@@ -260,10 +254,10 @@ namespace k_csparser
             c >= L'\x0100' || c == '\\')
         {
             // try to scan identifier
-            if (ScanIdent(stok)) {
+            if (ScanIdent(it)) {
                 token.Type = TokenType::Identifier;
 
-                if (TokenCheckAny(stok, A(p_keywords)) != NO_MATCH) {
+                if (TokenCheckAny(PeekToken(it), A(p_keywords)) != NO_MATCH) {
                     token.Type = TokenType::Keyword;
                 }
             }
@@ -272,7 +266,7 @@ namespace k_csparser
         // character, so try scan a comment when / encountered
         else if (c == '/')
         {
-            if (ScanComment(data, stok)) {
+            if (ScanComment(data, it)) {
                 token.Type = TokenType::Comment;
             }
         }
@@ -280,7 +274,7 @@ namespace k_csparser
         // try scan string
         else if (c == '"')
         {
-            auto isstr = ScanString([this]() { return IsEscape(eccCharacter); }, stok);
+            auto isstr = ScanString([this](auto &it) { return IsEscape(eccCharacter, it); }, it);
             if (Match(isstr)) {
                 token.Type = TokenType::String;
             }
@@ -292,22 +286,14 @@ namespace k_csparser
             token.Type = TokenType::Number;
 
             // hexadecimal number literal can't have real part
-            if (!ScanHexadecimal(stok)) {
+            if (!ScanHexadecimal(it)) {
                 // it's not hexadecimal number - it's integer or real
-                ScanDecimal(stok);
+                ScanDecimal(it);
 
                 // try scan integer postfix, if there's postfix it's integer
                 // number
-                if (ScanIntegerPostfix()) {
-                    ++stok.Length;
-                } else if (ScanRealPostfix()) {
-                    ++stok.Length;
-                    token.Type = TokenType::RealNumber;
-                } else {
-                    // try to scan "fractional" part of a number
-                    SourceToken tok;
-                    if (ScanReal(tok)) {
-                        stok.Length += tok.Length;
+                if (!ScanIntegerPostfix(it)) {
+                    if (ScanRealPostfix(it) || ScanReal(it)) {
                         token.Type = TokenType::RealNumber;
                     }
                 }
@@ -320,68 +306,46 @@ namespace k_csparser
             // interpolated string could be usual double quoted string or
             // @ verbatim string, "eat" $ character and try to scan one of
             // string variants
-            GetCharToken(false, nullptr, stok);
+            GetCharToken(nullptr, it);
 
-            k_parser::SourceToken tok;
-            bool isstring = Match(AnyMatch(
-                tok,
-
-                [this](auto &t) {
-                    return ScanString(
-                        [this]() { return InterpolationInnerScan(true, false); },
-                        t
-                    );
-                },
-
-                [this, &data](auto &t) {
-                    return ScanVerbatimString(
-                        data,
-                        [this]() { return InterpolationInnerScan(false, true); },
-                        t
-                    );
-                }
-            ));
-
-            if (isstring) {
-                stok.Length += tok.Length;
-            }
+            auto isstring =
+                Match(ScanString([this](auto &it) { return InterpolationInnerScan(true, false, it); }, it)) ||
+                Match(ScanVerbatimString(data, [this](auto &it) { return InterpolationInnerScan(false, true, it); }, it));
 
             token.Type = isstring ? TokenType::String : TokenType::Invalid;
         }
         // from . character real number can start, or it's a single dot
         else if (c == '.')
         {
-            if (ScanReal(stok)) {
+            if (ScanReal(it)) {
                 token.Type = TokenType::RealNumber;
             }
         }
         // from ' character only character literal can start
         else if (c == '\'')
         {
-            ScanCharacter(stok);
+            ScanCharacter(it);
             token.Type = TokenType::Character;
         }
         // "verbatim" character can start string or @ident
         else if (c == '@')
         {
-            if (Match(ScanVerbatimString(data, nullptr, stok))) {
+            if (Match(ScanVerbatimString(data, nullptr, it))) {
                 token.Type = TokenType::String;
             } else {
-                GetCharToken(false, nullptr, stok);
+                GetCharToken(nullptr, it);
 
-                SourceToken ident;
-                if (!ScanIdent(ident)) {
-                    token.Type = TokenType::Invalid;
-                } else {
-                    stok.Length += ident.Length;
+                if (ScanIdent(it)) {
                     token.Type = TokenType::Identifier;
+                } else {
+                    token.Type = TokenType::Invalid;
                 }
             }
         }
         // only preprocessor directive can start with # character
         else if (c == '#')
         {
-            ScanPreprocessor(stok);
+            ScanPreprocessor(it);
             token.Type = TokenType::Preprocessor;
         }
 
@@ -390,51 +354,43 @@ namespace k_csparser
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(A(p_compounds), stok, p_it) ||
-                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok, p_it);
+                CheckAny(A(p_compounds), it) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), it);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
             } else {
                 // all other stuff (unknown/invalid symbols)
-                GetCharToken(false, nullptr, stok);
+                GetCharToken(nullptr, it);
                 token.Type = TokenType::Invalid;
             }
         }
 
-        token.SourceToken = stok;
+        token.SourceToken = Scanner::ReadToken(it);
 
         return token;
     }
 
     template <typename Tsource>
-    int CSScanner<Tsource>::IsEscape(EscapeCheckContext context)
+    k_parser::SourceLength CSScanner<Tsource>::IsEscape(EscapeCheckContext context, const k_parser::ScannerSourceIterator &it) const
     {
-        k_parser::SourceToken token;
+        auto current = it;
 
-        auto unicodeescape = FromTokenWhile(
-            C("\\u"), p_hexadecimal, false, nullptr,
-            false, token, false
-        );
+        auto unicodeescape = FromTokenWhile(C("\\u"), p_hexadecimal, nullptr, false, current);
 
         if (Match(unicodeescape)) {
-            return token.Length;
+            return current - it;
         }
 
         if (context == eccCharacter) {
-            int length;
-            auto it = p_it;
-            if (CheckAny(A(p_escapes), length, it) != NO_MATCH) {
-                return length;
+            if (auto len = CheckAny(A(p_escapes), current)) {
+                return len;
             }
 
-            unicodeescape = FromTokenWhile(
-                C("\\x"), p_hexadecimal, false, nullptr,
-                false, token, false
-            );
+            unicodeescape = FromTokenWhile(C("\\x"), p_hexadecimal, nullptr, false, current);
 
             if (Match(unicodeescape)) {
-                return token.Length;
+                return current - it;
             }
         }
 
@@ -442,56 +398,55 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    int CSScanner<Tsource>::ScanInterpolationComment(bool multiline)
+    k_parser::SourceLength CSScanner<Tsource>::ScanInterpolationComment(bool multiline, const k_parser::ScannerSourceIterator &it) const
     {
-        k_parser::SourceToken token;
-        auto result = FromTo(C("/*"), C("*/"), multiline, nullptr, false, token, false);
-
-        return Match(result) ? token.Length : 0;
+        auto current = it;
+        auto result = FromTo(C("/*"), C("*/"), multiline, nullptr, current);
+        return Match(result) ? (current - it) : 0;
     }
 
     template <typename Tsource>
-    int CSScanner<Tsource>::InterpolationInnerScan(bool checkcharescape, bool multiline)
+    k_parser::SourceLength CSScanner<Tsource>::InterpolationInnerScan(bool checkcharescape, bool multiline, const k_parser::ScannerSourceIterator &it) const
     {
         if (checkcharescape) {
-            auto esc = IsEscape(eccCharacter);
+            auto esc = IsEscape(eccCharacter, it);
             if (esc > 0) {
                 return esc;
             }
         }
 
-        k_parser::SourceToken interp;
-        auto result = FromTo(
+        auto current = it;
+        auto result = FromToWithNesting(
             C("{"), C("}"), multiline,
-            [this, multiline]() { return ScanInterpolationComment(multiline); },
-            true, interp, false
+            [this, multiline](auto &it) { return ScanInterpolationComment(multiline, it); },
+            current
         );
 
-        return Match(result) ? interp.Length : 0;
+        return Match(result) ? (current - it) : 0;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanIdent(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanIdent(k_parser::ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(
-            p_alpha, p_alphanum, false, [this]() { return IsEscape(eccIdentifier); },
-            token
+            p_alpha, p_alphanum, [this](auto &it) { return IsEscape(eccIdentifier, it); },
+            it
         );
 
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const
     {
-        auto result = AnyMatch(
-            token,
-            [this](auto &t) { return FromTokenWhile(C("//"), p_all, false, nullptr, false, t); },
-            [this](auto &t) { return FromTo(C("/*"), C("*/"), true, nullptr, false, t); }
-        );
+        auto result = FromToEndOfLine(C("//"), it);
 
-        if (result == ScanResult::MatchTrimmedEOF) {
-            data.Current = int(IncrementalCurrentType::Comment);
+        if (NoMatch(result)) {
+            auto result = FromTo(C("/*"), C("*/"), true, nullptr, it);
+            if (result == ScanResult::MatchTrimmedEOF) {
+                data.Current = int(IncrementalCurrentType::Comment);
+            }
+            return Match(result);
         }
 
         return Match(result);
@@ -499,25 +454,23 @@ namespace k_csparser
 
     template <typename Tsource>
     template <typename Tinner>
-    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::ScannerSourceIterator &it) const
     {
-        return FromTo(C("\""), C("\""), false, inner, false, token);
+        return FromTo(C("\""), C("\""), false, inner, it);
     }
 
     template <typename Tsource>
     template <typename Tinner>
-    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult CSScanner<Tsource>::ScanVerbatimString(k_parser::IncrementalScanData &data, Tinner inner, k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTo(C("@\""), C("\""), true, inner, false, token);
+        auto result = FromTo(C("@\""), C("\""), true, inner, it);
 
         switch (result) {
             // continue with contigous double quoted strings only if there was full match
             case ScanResult::Match: {
-                SourceToken tok;
                 ScanResult next;
-                while (Match(next = FromTo(C("\""), C("\""), true, inner, false, tok))) {
+                while (Match(next = FromTo(C("\""), C("\""), true, inner, it))) {
                     result = next;
-                    token.Length += tok.Length;
                 }
                 break;
             }
@@ -531,85 +484,72 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanCharacter(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanCharacter(k_parser::ScannerSourceIterator &it) const
     {
         auto result = FromTo(
-            C("'"), C("'"), false, [this]() { return IsEscape(eccCharacter); },
-            false, token
+            C("'"), C("'"), false, [this](auto &it) { return IsEscape(eccCharacter, it); },
+            it
         );
 
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanIntegerPostfix()
+    bool CSScanner<Tsource>::ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const
     {
-        return CheckAny(C("lLuU"), p_it) != NO_MATCH;
+        return CheckAny(C("lLuU"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanRealPostfix()
+    bool CSScanner<Tsource>::ScanRealPostfix(k_parser::ScannerSourceIterator &it) const
     {
-        return CheckAny(C("fFdDmM"), p_it) != NO_MATCH;
+        return CheckAny(C("fFdDmM"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanHexadecimal(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanHexadecimal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = Match(FromTokenWhile(
-            A(p_hexprefixes), p_hexadecimal, false, nullptr,
-            false, token
-        ));
+        auto result = Match(FromTokenWhile(A(p_hexprefixes), p_hexadecimal, nullptr, false, it));
 
-        if (result && ScanIntegerPostfix()) {
-            ++token.Length;
+        if (result) {
+            ScanIntegerPostfix(it);
         }
 
         return result;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanDecimal(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanDecimal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromSetWhile(p_numeric, p_numeric, false, nullptr, token);
+        auto result = FromSetWhile(p_numeric, p_numeric, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanReal(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanReal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTokenWhile(C("."), p_numeric, false, nullptr, true, token);
+        auto result = Match(FromTokenWhile(C("."), p_numeric, nullptr, true, it));
 
-        if (Match(result)) {
+        if (result) {
             // optional E/e part
-            if (CheckAny(C("eE"), p_it) != NO_MATCH) {
-                ++token.Length;
-
+            if (CheckAny(C("eE"), it)) {
                 // optional +/- after exponent sign
-                if (CheckAny(C("+-"), p_it) != NO_MATCH) {
-                    ++token.Length;
-                }
-
+                CheckAny(C("+-"), it);
                 // exponent digits
-                SourceToken exp;
-                if (ScanDecimal(exp)) {
-                    token.Length += exp.Length;
-                }
+                ScanDecimal(it);
             }
 
             // optional postfix
-            if (ScanRealPostfix()) {
-                ++token.Length;
-            }
+            ScanRealPostfix(it);
         }
 
-        return Match(result);
+        return result;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanPreprocessor(k_parser::SourceToken &token)
+    bool CSScanner<Tsource>::ScanPreprocessor(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTokenWhile(C("#"), p_all, false, nullptr, false, token);
+        auto result = FromToEndOfLine(C("#"), it);
         return Match(result);
     }
 

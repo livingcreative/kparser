@@ -3,7 +3,7 @@
 
     Utilities library for parsers programming
 
-    (c) livingcreative, 2017
+    (c) livingcreative, 2017 - 2021
 
     https://github.com/livingcreative/kparser
 

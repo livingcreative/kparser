@@ -3,7 +3,7 @@
 
     Utilities library for parsers programming
 
-    (c) livingcreative, 2017
+    (c) livingcreative, 2017 - 2021
 
     https://github.com/livingcreative/kparser
 
@@ -71,45 +71,37 @@ namespace k_cppparser
     private:
         Token ScanToken(k_parser::IncrementalScanData &data);
 
-        int IsEscape();
-        int IsLineBreakMerge();
+        k_parser::SourceLength IsEscape(const k_parser::ScannerSourceIterator &it) const;
 
-        bool ScanIdent(k_parser::SourceToken &token);
-        bool ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
+        bool ScanIdent(k_parser::ScannerSourceIterator &it) const;
+        bool ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
 
-        template <typename Tinner>
-        typename k_parser::Scanner<Tsource>::ScanResult ScanString(Tinner inner, k_parser::SourceToken &token);
+        typename k_parser::Scanner<Tsource>::ScanResult ScanString(k_parser::ScannerSourceIterator &it) const;
 
-        bool ScanCharacter(k_parser::SourceToken &token);
-        bool ScanIntegerPostfix();
-        bool ScanRealPostfix();
-        bool ScanHexadecimal(k_parser::SourceToken &token);
-        bool ScanDecimal(k_parser::SourceToken &token);
-        bool ScanReal(k_parser::SourceToken &token);
-        bool ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token);
+        bool ScanCharacter(k_parser::ScannerSourceIterator &it) const;
+        bool ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const;
+        bool ScanRealPostfix(k_parser::ScannerSourceIterator &it) const;
+        bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanReal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
 
     private:
         typedef k_parser::Token<char> TokenChar;
         typedef typename k_parser::CharRange CharRange;
 
-        static const CharRange p_all[1];         // all characters set
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
         static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
         static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
         static const CharRange p_alphanum[5];    // alpha + numeric characters set
 
-        static const TokenChar p_hexprefixes[2];   // hexadecimal prefixes
-        static const TokenChar p_escapes[9];       // all predefined escape sequences
-        static const TokenChar p_compounds[24];    // all compound sequences
-        static const TokenChar p_linemerge[4];     // all compound sequences which forms skip over line breaks
+        static const TokenChar p_hexprefixes[2]; // hexadecimal prefixes
+        static const TokenChar p_escapes[9];     // all predefined escape sequences
+        static const TokenChar p_compounds[24];  // all compound sequences
 
-        static const TokenChar p_keywords[75];     // all c++ keywords
+        static const TokenChar p_keywords[75];   // all c++ keywords
     };
 
-    template <typename Tsource>
-    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_all[] = {
-        { L'\x0001', L'\xFFFF' }
-    };
 
     template <typename Tsource>
     const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_numeric[] = {
@@ -159,11 +151,6 @@ namespace k_cppparser
     };
 
     template <typename Tsource>
-    const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_linemerge[] = {
-        "\\\n\r", "\\\r\n", "\\\n", "\\"
-    };
-
-    template <typename Tsource>
     const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_keywords[] = {
         "alignas", "alignof", "asm", "auto", "bool", "break", "case", "catch",
         "char", "char16_t", "char32_t", "class", "const", "constexpr", "const_cast",
@@ -193,42 +180,42 @@ namespace k_cppparser
     template <typename Tsource>
     typename CPPScanner<Tsource>::Token CPPScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data)
     {
-        k_parser::SourceToken stok;
-        Token result;
-        if (SkipToToken(stok)) {
-            if (includespacers && stok.Length > 0) {
-                result.Type = TokenType::Spacer;
-                result.SourceToken = stok;
+        auto it = It();
+
+        if (SkipToToken(it)) {
+            if (includespacers && PeekToken(it)) {
+                return Token(TokenType::Spacer, Scanner::ReadToken(it));
             } else {
-                result = ScanToken(data);
+                DiscardToken(it);
+                return ScanToken(data);
             }
         } else {
             switch (data.Current) {
                 case IncrementalCurrentType::Preprocessor:
                     // empty line encountered while being inside preprocessor token,
                     // finish token
-                    if (stok.Position == 0) {
+                    if (PeekToken(it).Position == 0) {
                         data.Current = int(IncrementalCurrentType::None);
                     }
                     break;
             }
+            DiscardToken(it);
+            return Token();
         }
-        return result;
     }
 
     template <typename Tsource>
     typename CPPScanner<Tsource>::Token CPPScanner<Tsource>::ScanToken(k_parser::IncrementalScanData &data)
     {
         Token token;
-        k_parser::SourceToken stok;
+        auto it = It();
 
         if (data.Current != int(IncrementalCurrentType::None)) {
             switch (data.Current) {
                 case IncrementalCurrentType::MultilineComment: {
                     token.Type = TokenType::Comment;
 
-                    int level = 1;
-                    auto result = ContinueTo(C(""), C("*/"), true, nullptr, false, stok, level);
+                    auto result = ContinueTo(C(), C("*/"), true, nullptr, it);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -243,14 +230,10 @@ namespace k_cppparser
                         data.Current == int(IncrementalCurrentType::SinglelineComment) ?
                         TokenType::Comment : TokenType::Preprocessor;
 
-                    int level = 1;
-                    auto result = ContinueWhile(
-                        p_all , false,
-                        [=]() { return IsLineBreakMerge(); },
-                        stok
-                    );
+                    auto result = ContinueToEndOfLine(it);
 
-                    if (!Match(result) || EndsWith(stok, A(p_linemerge)) == NO_MATCH) {
+                    // if sequence does not end with line merge - terminate incremental sequence
+                    if (NoMatch(result) || !EndsWith(PeekToken(it), C("\\"))) {
                         data.Current = int(IncrementalCurrentType::None);
                     }
 
@@ -258,7 +241,7 @@ namespace k_cppparser
                 }
             }
 
-            token.SourceToken = stok;
+            token.SourceToken = Scanner::ReadToken(it);
 
             return token;
         }
@@ -272,10 +255,10 @@ namespace k_cppparser
             c >= L'\x0100' || c == '\\')
         {
             // try to scan identifier
-            if (ScanIdent(stok)) {
+            if (ScanIdent(it)) {
                 token.Type = TokenType::Identifier;
 
-                if (TokenCheckAny(stok, A(p_keywords)) != NO_MATCH) {
+                if (TokenCheckAny(PeekToken(it), A(p_keywords)) != NO_MATCH) {
                     token.Type = TokenType::Keyword;
                 }
             }
@@ -284,7 +267,7 @@ namespace k_cppparser
         // character, so try scan a comment when / encountered
         else if (c == '/')
         {
-            if (ScanComment(data, stok)) {
+            if (ScanComment(data, it)) {
                 token.Type = TokenType::Comment;
             }
         }
@@ -292,7 +275,7 @@ namespace k_cppparser
         // try scan string
         else if (c == '"')
         {
-            auto isstr = ScanString([this]() { return IsEscape(); }, stok);
+            auto isstr = ScanString(it);
             if (Match(isstr)) {
                 token.Type = TokenType::String;
             }
@@ -304,22 +287,14 @@ namespace k_cppparser
             token.Type = TokenType::Number;
 
             // hexadecimal number literal can't have real part
-            if (!ScanHexadecimal(stok)) {
+            if (!ScanHexadecimal(it)) {
                 // it's not hexadecimal number - it's integer or real
-                ScanDecimal(stok);
+                ScanDecimal(it);
 
                 // try scan integer postfix, if there's postfix it's integer
                 // number
-                if (ScanIntegerPostfix()) {
-                    ++stok.Length;
-                } else if (ScanRealPostfix()) {
-                    ++stok.Length;
-                    token.Type = TokenType::RealNumber;
-                } else {
-                    // try to scan "fractional" part of a number
-                    SourceToken tok;
-                    if (ScanReal(tok)) {
-                        stok.Length += tok.Length;
+                if (!ScanIntegerPostfix(it)) {
+                    if (ScanRealPostfix(it) || ScanReal(it)) {
                         token.Type = TokenType::RealNumber;
                     }
                 }
@@ -328,20 +303,20 @@ namespace k_cppparser
         // from . character real number can start, or it's a single dot
         else if (c == '.')
         {
-            if (ScanReal(stok)) {
+            if (ScanReal(it)) {
                 token.Type = TokenType::RealNumber;
             }
         }
         // from ' character only character literal can start
         else if (c == '\'')
         {
-            ScanCharacter(stok);
+            ScanCharacter(it);
             token.Type = TokenType::Character;
         }
         // only preprocessor directive can start with # character
         else if (c == '#')
         {
-            ScanPreprocessor(data, stok);
+            ScanPreprocessor(data, it);
             token.Type = TokenType::Preprocessor;
         }
 
@@ -350,187 +325,169 @@ namespace k_cppparser
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
             bool validsymbol =
-                CheckAny(A(p_compounds), stok, p_it) ||
-                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), stok, p_it);
+                CheckAny(A(p_compounds), it) ||
+                CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), it);
 
             if (validsymbol) {
                 token.Type = TokenType::Symbol;
             } else {
                 // all other stuff (unknown/invalid symbols)
-                GetCharToken(false, nullptr, stok);
+                GetCharToken(nullptr, it);
                 token.Type = TokenType::Invalid;
             }
         }
 
-        token.SourceToken = stok;
+        token.SourceToken = Scanner::ReadToken(it);
 
         return token;
     }
 
     template <typename Tsource>
-    int CPPScanner<Tsource>::IsEscape()
+    k_parser::SourceLength CPPScanner<Tsource>::IsEscape(const k_parser::ScannerSourceIterator &it) const
     {
-        k_parser::SourceToken token;
+        auto current = it;
 
-        auto unicodeescape = FromTokenWhile(
-            C("\\u"), p_hexadecimal, false, nullptr,
-            false, token, false
-        );
+        auto unicodeescape = FromTokenWhile(C("\\u"), p_hexadecimal, nullptr, false, current);
 
         if (Match(unicodeescape)) {
-            return token.Length;
+            return current - it;
         }
 
-        int length;
-        auto it = p_it;
-        if (CheckAny(A(p_escapes), length, it) != NO_MATCH) {
-            return length;
+        if (auto len = CheckAny(A(p_escapes), current)) {
+            return len;
         }
 
-        unicodeescape = FromTokenWhile(
-            C("\\x"), p_hexadecimal, false, nullptr,
-            false, token, false
-        );
+        unicodeescape = FromTokenWhile(C("\\x"), p_hexadecimal, nullptr, false, current);
 
         if (Match(unicodeescape)) {
-            return token.Length;
+            return current - it;
         }
 
         return 0;
     }
 
     template <typename Tsource>
-    int CPPScanner<Tsource>::IsLineBreakMerge()
+    bool CPPScanner<Tsource>::ScanIdent(k_parser::ScannerSourceIterator &it) const
     {
-        int length;
-        auto it = p_it;
-        if (CheckAny(A(p_linemerge), length, it) != NO_MATCH) {
-            return length;
-        }
-
-        return 0;
-    }
-
-    template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanIdent(k_parser::SourceToken &token)
-    {
-        auto result = FromSetWhile(p_alpha, p_alphanum, false, nullptr, token);
+        auto result = FromSetWhile(p_alpha, p_alphanum, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTo(C("/*"), C("*/"), true, nullptr, false, token);
-        if (Match(result)) {
-            if (result == ScanResult::MatchTrimmedEOF) {
+        auto scanresult = FromTo(C("/*"), C("*/"), true, nullptr, it);
+        if (Match(scanresult)) {
+            if (scanresult == ScanResult::MatchTrimmedEOF) {
                 data.Current = int(IncrementalCurrentType::MultilineComment);
             }
             return true;
         }
 
-        result = FromTokenWhile(C("//"), p_all, false, nullptr, false, token);
+        auto start = it;
+        auto result = FromToEndOfLine(C("//"), it);
 
-        if (Match(result) && EndsWith(token, A(p_linemerge)) != NO_MATCH) {
+        auto tailresult = result;
+        while (Match(tailresult) && EndsWith(PeekToken(start, it), C("\\"))) {
             data.Current = int(IncrementalCurrentType::SinglelineComment);
+
+            // in regular scan there will be line break at the end of the last scanned line,
+            // it must be skipped
+            SkipLineBreak(it);
+
+            start = it;
+            tailresult = ContinueToEndOfLine(it);
         }
 
         return Match(result);
     }
 
     template <typename Tsource>
-    template <typename Tinner>
-    typename k_parser::Scanner<Tsource>::ScanResult CPPScanner<Tsource>::ScanString(Tinner inner, k_parser::SourceToken &token)
+    typename k_parser::Scanner<Tsource>::ScanResult
+    CPPScanner<Tsource>::ScanString(k_parser::ScannerSourceIterator &it) const
     {
-        return FromTo(C("\""), C("\""), false, inner, false, token);
+        return FromTo(C("\""), C("\""), false, [this](auto &it) { return IsEscape(it); }, it);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanCharacter(k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanCharacter(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTo(
-            C("'"), C("'"), false, [this]() { return IsEscape(); },
-            false, token
-        );
-
+        auto result = FromTo(C("'"), C("'"), false, [this](auto &it) { return IsEscape(it); }, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanIntegerPostfix()
+    bool CPPScanner<Tsource>::ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const
     {
-        return CheckAny(C("lLuU"), p_it) != NO_MATCH;
+        auto start = it;
+
+        while (CheckAny(C("lLuU"), it) != 0) {}
+
+        return Match(it - start);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanRealPostfix()
+    bool CPPScanner<Tsource>::ScanRealPostfix(k_parser::ScannerSourceIterator &it) const
     {
-        return CheckAny(C("fFdD"), p_it) != NO_MATCH;
+        return CheckAny(C("fFdD"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanHexadecimal(k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanHexadecimal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = Match(FromTokenWhile(
-            A(p_hexprefixes), p_hexadecimal, false, nullptr,
-            false, token
-        ));
+        auto result = Match(FromTokenWhile(A(p_hexprefixes), p_hexadecimal, nullptr, false, it));
 
-        if (result && ScanIntegerPostfix()) {
-            ++token.Length;
+        if (result) {
+            ScanIntegerPostfix(it);
         }
 
         return result;
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanDecimal(k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanDecimal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromSetWhile(p_numeric, p_numeric, false, nullptr, token);
+        auto result = FromSetWhile(p_numeric, p_numeric, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanReal(k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanReal(k_parser::ScannerSourceIterator &it) const
     {
-        auto result = FromTokenWhile(C("."), p_numeric, false, nullptr, true, token);
+        auto result = Match(FromTokenWhile(C("."), p_numeric, nullptr, true, it));
 
-        if (Match(result)) {
+        if (result) {
             // optional E/e part
-            if (CheckAny(C("eE"), p_it) != NO_MATCH) {
-                ++token.Length;
-
+            if (CheckAny(C("eE"), it)) {
                 // optional +/- after exponent sign
-                if (CheckAny(C("+-"), p_it) != NO_MATCH) {
-                    ++token.Length;
-                }
-
+                CheckAny(C("+-"), it);
                 // exponent digits
-                SourceToken exp;
-                if (ScanDecimal(exp)) {
-                    token.Length += exp.Length;
-                }
+                ScanDecimal(it);
             }
 
             // optional postfix
-            if (ScanRealPostfix()) {
-                ++token.Length;
-            }
+            ScanRealPostfix(it);
         }
 
-        return Match(result);
+        return result;
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::SourceToken &token)
+    bool CPPScanner<Tsource>::ScanPreprocessor(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const
     {
-        auto result = Match(FromTokenWhile(
-            C("#"), p_all, false, [=]() { return IsLineBreakMerge(); },
-            false, token
-        ));
+        auto start = it;
+        auto result = Match(FromToEndOfLine(C("#"), it));
 
-        if (result && EndsWith(token, A(p_linemerge)) != NO_MATCH) {
+        auto tailresult = result;
+        while (tailresult && EndsWith(PeekToken(start, it), C("\\"))) {
             data.Current = int(IncrementalCurrentType::Preprocessor);
+
+            // in regular scan there will be line break at the end of the last scanned line,
+            // it must be skipped
+            SkipLineBreak(it);
+
+            start = it;
+            tailresult = Match(ContinueToEndOfLine(it));
         }
 
         return result;

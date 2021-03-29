@@ -3,7 +3,7 @@
 
     Utilities library for parsers programming
 
-    (c) livingcreative, 2017
+    (c) livingcreative, 2017 - 2021
 
     https://github.com/livingcreative/kparser
 
@@ -16,6 +16,7 @@
 
 #include "khelpers.h"
 #include <algorithm>
+#include <cassert>
 
 
 namespace k_parser
@@ -41,8 +42,11 @@ namespace k_parser
         constexpr SourceToken(SourcePosition position, SourceLength length = 0) noexcept :
             Position(position),
             Length(length)
-        {}
+        {
+            assert(position >= 0 && length >= 0);
+        }
 
+        // casting to bool returns true if token isn't zero length
         constexpr operator bool() const noexcept { return Length > 0; }
 
         SourcePosition Position; // token position inside source
@@ -97,8 +101,8 @@ namespace k_parser
         {}
 
         // const iterators
-        constexpr const T* begin() const noexcept { return Text; }
-        constexpr const T* end() const noexcept { return Text + Length; }
+        constexpr const T *begin() const noexcept { return Text; }
+        constexpr const T *end() const noexcept { return Text + Length; }
 
         const T    *Text;   // pointer to first token character
         SourceSize  Length; // character count
@@ -151,19 +155,27 @@ namespace k_parser
     class ScannerSourceIterator
     {
     public:
+        // construct empty iterator
         constexpr ScannerSourceIterator() noexcept :
             p_position(0),
+            p_line(0),
             p_length(0)
         {}
 
+        // copy iterator
         constexpr ScannerSourceIterator(const ScannerSourceIterator &source) noexcept :
             p_position(source.p_position),
+            p_line(source.p_line),
             p_length(source.p_length)
         {}
 
+        // construct iterator from "abstract" source
+        //      iterator will point at source start
+        //      T type must have Length() function defined which returns total length of the source
         template <typename T>
         constexpr ScannerSourceIterator(const T &source) noexcept :
             p_position(0),
+            p_line(0),
             p_length(source.Length())
         {}
 
@@ -172,60 +184,58 @@ namespace k_parser
         //      false otherwise
         constexpr operator bool() const noexcept { return p_position >= p_length; }
 
-        constexpr ScannerSourceIterator& operator=(const ScannerSourceIterator &source) noexcept
+        // reassignment
+        constexpr ScannerSourceIterator &operator=(const ScannerSourceIterator &source) noexcept
         {
             p_position = source.p_position;
+            p_line = source.p_line;
             p_length = source.p_length;
             return *this;
         }
 
         // iterator advance/decrement operators
 
+        // compute distance between two iterators
         constexpr SourceLength operator-(const ScannerSourceIterator &rhs) const noexcept
         {
             return p_position - rhs.p_position;
         }
 
-        constexpr ScannerSourceIterator operator+(SourceLength advance) const noexcept
-        {
-            return ScannerSourceIterator(p_position + advance, p_length);
-        }
-
-        constexpr ScannerSourceIterator& operator+=(SourceLength advance) noexcept
+        // mutate given iterator by advance
+        constexpr ScannerSourceIterator &operator+=(SourceLength advance) noexcept
         {
             p_position += advance;
             return *this;
         }
 
-        constexpr ScannerSourceIterator operator-(SourceLength advance) const noexcept
+        // advance internal line counter
+        void AdvanceLine()
         {
-            return ScannerSourceIterator(p_position - advance, p_length);
-        }
-
-        constexpr ScannerSourceIterator& operator-=(SourceLength advance) noexcept
-        {
-            p_position -= advance;
-            return *this;
+            ++p_line;
         }
 
         // current position inside source text
         constexpr SourcePosition Position() const noexcept { return p_position; }
+        constexpr SourcePosition Line() const noexcept { return p_line; }
 
         // make SourceToken from to iterators
         //      b must be equal or further than a
         static constexpr SourceToken difftotoken(const ScannerSourceIterator &a, const ScannerSourceIterator &b) noexcept
         {
+            assert(b.p_position >= a.p_position);
             return SourceToken(a.p_position, b.p_position - a.p_position);
         }
 
     private:
-        constexpr ScannerSourceIterator(SourcePosition position, SourceLength length) noexcept :
+        constexpr ScannerSourceIterator(SourcePosition position, SourceLength line, SourceLength length) noexcept :
             p_position(position),
+            p_line(line),
             p_length(length)
         {}
 
     private:
         SourcePosition p_position;
+        SourcePosition p_line;
         SourceLength   p_length;
     };
 
@@ -243,11 +253,25 @@ namespace k_parser
     {
     public:
         // initialize source with pointer to characters and its length
-        // position is always initialized to 0
         constexpr ScannerStringSource(const T *source, SourceLength length) noexcept :
             p_source(source),
             p_length(length)
         {}
+
+        template <size_t length>
+        constexpr ScannerStringSource(const T(&source)[length]) noexcept :
+            p_source(source),
+            p_length(length - 1) // NOTE: c strings are 0 terminated, exclude trailing 0
+        {}
+
+        // copy
+        constexpr ScannerStringSource(const ScannerStringSource &source) noexcept :
+            p_source(source.p_source),
+            p_length(source.p_length)
+        {}
+
+        // no reason for moving
+        ScannerStringSource(ScannerStringSource &&) = delete;
 
         // followings are ScannerSource implementation
 
@@ -282,6 +306,7 @@ namespace k_parser
     public:
         // check if there's a space character at current source position
         static constexpr bool IsSpace(const Tsource &source, const ScannerSourceIterator &it) noexcept;
+
         // check if there's a line break character or sequence at current source position
         //      return 0 if there's no line break or
         //      length of line break sequence if there's one
@@ -300,16 +325,21 @@ namespace k_parser
     {
     public:
         // template parameters type inner definitions
-        typedef typename Tsource::char_t char_t;
-        typedef Tsource source_t;
-        typedef Token<char_t> token_t;
+        typedef typename Tsource::char_t char_t;   // current character type
+        typedef Tsource                  source_t; // current source type
+        typedef Token<char_t>            token_t;  // current Token type
 
     public:
         // construct scanner for given source
         constexpr Scanner(const Tsource &source) noexcept;
+
         // construct scanner for given source and existing iterator to start scanning from given position
         //      iterator MUST be derived from given source
         constexpr Scanner(const Tsource &source, const ScannerSourceIterator &start) noexcept;
+
+        // prevent copy/move
+        Scanner(const Scanner &) = delete;
+        Scanner(Scanner &&) = delete;
 
     protected:
         // scan result returned by some of scanner functions
@@ -321,85 +351,36 @@ namespace k_parser
             MatchTrimmedEOF  // partial match, terminated by end of source
         };
 
-    protected:
         // handy checks for ScanResult value
         static constexpr bool Match(ScanResult result) noexcept { return result != ScanResult::NoMatch; }
         static constexpr bool NoMatch(ScanResult result) noexcept { return result == ScanResult::NoMatch; }
 
+        // handy checks for SourceLength result (for check semantics comp.)
+        static constexpr bool Match(SourceLength result) noexcept { return result != 0; }
+        static constexpr bool NoMatch(SourceLength result) noexcept { return result == 0; }
+
         // handy conversion of bool to ScanResult
-        static constexpr ScanResult Match(bool result) noexcept { return result ? ScanResult::Match : ScanResult::NoMatch; }
+        //static constexpr ScanResult Match(bool result) noexcept { return result ? ScanResult::Match : ScanResult::NoMatch; }
 
-        // variable arguments AnyMatch implementation
-        // tries to match one of given match functions
-        // returns ScanResult and token when matched
-        // basically handy way to implement "or" grammar checks, like
-        //      seqence1 || seqence2 || seqence3 ...
-        // where sequenceN is one of predefined scan functions
+        // handy type to designate comparison result
+        typedef int ComparisonResult;
 
-        template <typename Tc>
-        static constexpr ScanResult AnyMatch(SourceToken &token, Tc func) noexcept;
+        // handy type to designate indexed search result type
+        typedef int SearchResult;
 
-        template <typename Tc, typename... Args>
-        static constexpr ScanResult AnyMatch(SourceToken &token, Tc first, Args... args) noexcept;
+        // search no match result value
+        static constexpr int NO_MATCH = -1;
 
-        // variable arguments SequenceMatch implementaion
-        // tries to match all given match functions as one token
-        // returns Scanresult and token when matched
-        // basically handy way to implement checks for tokens composed of
-        // several checks in particular order
+    protected:
+        // props
+        // ---------------------------------------------------------------------
 
-        template <typename Tc>
-        static constexpr ScanResult SequenceMatch(SourceToken &token, Tc func) noexcept;
+        // iterator
+        constexpr ScannerSourceIterator It() const { return p_it; }
 
-        template <typename Tc, typename... Args>
-        static constexpr ScanResult SequenceMatch(SourceToken &token, Tc first, Args... args) noexcept;
-
-        // 
-        template <typename Tc>
-        static constexpr ScanResult OptionalMatch(SourceToken &token, Tc func) noexcept
-        {
-            auto result = func(token);
-            return Match(result) ? result : ScanResult::Match;
-        }
-
-
-        // helper functions to compare tokens of same or different character types
-        template <typename T1, typename T2>
-        static constexpr int CompareTokens(
-            const Token<T1> &a, const Token<T2> &b,
-            SourceSize limit = -1
-        );
-
-        // helper functions to help awsome c++ compiler with types
-
-        template <typename T, size_t length>
-        static constexpr FixedArray<T> A(T (&items)[length]) noexcept { return FixedArray<T>(items); }
-
-        template <typename T, size_t length>
-        static constexpr Token<T> C(T (&items)[length]) noexcept { return Token<T>(items); }
-
-        // helper functions to check if token starts or ends with one of given sequences
-
-        template <typename T>
-        constexpr bool StartsWith(const SourceToken &token, const Token<T> &sequence) noexcept;
-
-        template <typename T>
-        constexpr int StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept;
-
-        template <typename T>
-        constexpr bool EndsWith(const SourceToken &token, const Token<T> &sequence) noexcept;
-
-        template <typename T>
-        constexpr int EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept;
-
-        // helper function to convert SourceToken to token
-        constexpr token_t SourceTokenToToken(const SourceToken &token) const noexcept
-        {
-            return p_source.SourceTokenToToken(token);
-        }
-
+        // props helpers
         constexpr char_t CharCurrent() const noexcept { return p_source.CharCurrent(p_it); }
-        constexpr SourceLength LineCount() const noexcept { return p_lines; }
+        constexpr SourceLength LineCount() const noexcept { return p_it.Line(); }
 
         // checks if there's at least count characters before source end
         constexpr bool HasCharacters(const ScannerSourceIterator &it, SourceLength count) const noexcept
@@ -407,119 +388,245 @@ namespace k_parser
             return count <= (p_source.Length() - it.Position());
         }
 
-        // skip all whitespace (and optionally, line break) characters till start of the
-        // next possible token
-        // optionally returns skipped sequence as a source token
+        // checks from ScannerSpecialCharChecker (checks at current position)
+        constexpr bool IsSpace(const ScannerSourceIterator &it) const noexcept { return Tchecker::IsSpace(p_source, it); }
+        constexpr SourceLength IsBreak(const ScannerSourceIterator &it) const noexcept { return Tchecker::IsBreak(p_source, it); }
 
-        constexpr bool SkipToToken(SourceToken &token, bool nextline = true) noexcept;
-
-        constexpr bool SkipToToken(bool nextline = true) noexcept
+        // helper function to convert SourceToken to token
+        constexpr token_t SourceTokenToToken(const SourceToken &token) const noexcept
         {
-            SourceToken token;
-            return SkipToToken(token, nextline);
+            return p_source.SourceTokenToToken(token);
         }
 
-        // checks from ScannerSpecialCharChecker
 
-        constexpr bool IsSpace() const noexcept { return Tchecker::IsSpace(p_source, p_it); }
-        constexpr SourceLength IsBreak() const noexcept { return Tchecker::IsBreak(p_source, p_it); }
+        // helpers
+        // ---------------------------------------------------------------------
+
+        // helper functions to compare tokens of same or different character types
+        template <typename T1, typename T2>
+        static constexpr ComparisonResult CompareTokens(
+            const Token<T1> &a, const Token<T2> &b,
+            SourceSize limit = -1
+        ) noexcept;
+
+        template <typename T1, typename T2>
+        static constexpr ComparisonResult CompareTokensCI(
+            const Token<T1> &a, const Token<T2> &b,
+            SourceSize limit = -1
+        ) noexcept;
+
+        // helper functions to help awsome c++ compiler with types
+
+        // convert c array to FixedArray
+        template <typename T, size_t length>
+        static constexpr FixedArray<T> A(T(&items)[length]) noexcept { return FixedArray<T>(items); }
+
+        // convert c character array to token
+        template <typename T, size_t length>
+        static constexpr Token<T> C(T(&items)[length]) noexcept { return Token<T>(items); }
+
+        static constexpr Token<const char> C() noexcept { return Token<const char>(); }
+
+
+        // SourceToken helpers
+        // ---------------------------------------------------------------------
+
+        // helper functions to check if token starts or ends with one of given sequences
+
+        template <typename T>
+        constexpr bool StartsWith(const SourceToken &token, const Token<T> &sequence) const noexcept;
+
+        template <typename T>
+        constexpr SearchResult StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept;
+
+        template <typename T>
+        constexpr bool EndsWith(const SourceToken &token, const Token<T> &sequence) const noexcept;
+
+        template <typename T>
+        constexpr SearchResult EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept;
+
+        // helper functions to check already scanned token
+
+        template <typename T>
+        constexpr SearchResult TokenCheckAny(const SourceToken &token, const Token<T> &characters) const noexcept;
+
+        template <typename T>
+        constexpr SearchResult TokenCheckAny(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept;
+
+        template <typename T>
+        constexpr SearchResult TokenCheckAnyCI(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept;
+
+
+        // basic checks
+        // ---------------------------------------------------------------------
 
         // check that there's a match of a character or sequence at "it" position
+        //      return 0 if none, length of the match if match found
+        //      iterator is advanced by length of match on success
 
         template <typename T>
-        bool Check(T c, ScannerSourceIterator &it);
+        constexpr SourceLength Check(T c, ScannerSourceIterator &it, bool advance = true) const noexcept;
 
         template <typename T>
-        bool Check(const Token<T> &s, ScannerSourceIterator &it);
+        constexpr SourceLength Check(const Token<T> &s, ScannerSourceIterator &it, bool advance = true ) const noexcept;
 
         // following CheckAny functions are sort of high-level versions of Check to help
         // perform checks against multiple characters or sequences
 
-        static constexpr int NO_MATCH = -1;
+        template <typename T>
+        constexpr SourceLength CheckAny(const Token<T> &characters, ScannerSourceIterator &it, bool advance = true) const noexcept;
 
         template <typename T>
-        int CheckAny(const Token<T> &characters, ScannerSourceIterator &it);
+        constexpr SourceLength CheckAny(const FixedArray<const Token<T>> &compounds, ScannerSourceIterator &it, bool advance = true) const noexcept;
 
-        template <typename T>
-        bool CheckAny(const Token<T> &characters, SourceToken &token, ScannerSourceIterator &it);
 
-        template <typename T>
-        int CheckAny(
-            const FixedArray<const Token<T>> &compounds, SourceLength &length,
-            ScannerSourceIterator &it
-        );
-
-        template <typename T>
-        bool CheckAny(
-            const FixedArray<const Token<T>> &compounds, SourceToken &token,
-            ScannerSourceIterator &it
-        );
-
-        // helper functions to check already scanned token
-        template <typename T>
-        int TokenCheckAny(const SourceToken &token, const Token<T> &characters);
-
-        template <typename T>
-        int TokenCheckAny(
-            const SourceToken &token,
-            const FixedArray<const Token<T>> &sequences
-        );
+        // primitive scans
+        // ---------------------------------------------------------------------
 
         // following are core scan functions which perform scans for common patterns
-        // Tinner template parameter designates "inner scan" lambda function
-        // (thanks to awesome language design where you can't declare something you
-        // can actually use)
-        // inner scan function has following signature: int (void) and returns length of
-        // detected nested sequence (or 0 if there's no seqence detected)
+        // main difference from Check functions is optional account for line breaks and inner scan sequences
+        //      Tinner template parameter designates "inner scan" lambda function
+        //      (thanks to awesome language design where you can't declare something you
+        //      can actually use)
+        //      inner scan function has following signature:
+        //          SourceLength (const ScannerSourceIterator &it)
+        //      and it should return length of
+        //      detected nested sequence (or 0 if there's no seqence detected) at given iterator
 
         template <typename Tinner>
-        bool GetCharToken(
-            bool nextline, Tinner inner, SourceToken &token,
-            bool increment = true
-        );
+        SourceLength GetCharToken(Tinner inner, ScannerSourceIterator &it, bool advance = true) const;
 
+        // get or peek single character or inner sequence at given iterator
+        // return length of detected char or inner sequence
+        //      nextline - controls of how to deal with line breaks
+        //          if true - function returns any detected line break sequence as ordinal character
+        //          if false and it at line break - function returns 0 (thus, stopping at line break)
+        //      advance - set to true if given iterator should be advanced by detected sequence length
         template <typename Tinner>
-        bool CheckCharToken(
-            const CharSet &set, bool nextline, Tinner inner, SourceToken &token,
-            bool increment = true
-        );
+        SourceLength GetCharToken(bool nextline, Tinner inner, ScannerSourceIterator &it, bool advance = true) const;
 
+        // get or peek single character in given set or inner sequence at given iterator
+        // same as previous one, but checks single character against given character set if nothing else
+        // matched (inner sequence)
         template <typename Tinner>
-        ScanResult ContinueWhile(
-            const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token,
-            bool increment = true
-        );
+        SourceLength GetCharToken(const CharSet &set, Tinner inner, ScannerSourceIterator &it, bool advance = true) const;
+
+        // matches all consequtive characters in whileset, linebreaks or inner sequences
+        template <typename Tinner>
+        SourceLength ContinueWhile(const CharSet &whileset, Tinner inner, ScannerSourceIterator &it) const;
+
+        // matches everything up to line break or end of source
+        SourceLength ContinueToEndOfLine(ScannerSourceIterator &it) const;
+
+        // matches all characters up to totoken sequence
+        //      fromtoken - sequence that was used as starting sequence
+        //          it is used to control nested matches, if no nesting is required
+        //          it can be empty
+        //      totoken - token which terminates sequence
+        //          if nesting is allowed there must be nestinglevel occurencies of this
+        //          token in order to terminate the sequence
+        //      nestinglevel - current nesting level (for incremental scans)
+        //          must be at least 1
+        //          with this version nesting is allowed and scan will be finished only on trim or
+        //          nesting level reaching 0
+        template <typename T, typename Tinner>
+        ScanResult ContinueTo(
+            const Token<T> &fromtoken, const Token<T> &totoken, bool multiline,
+            Tinner inner, ScannerSourceIterator &it
+        ) const;
 
         template <typename T, typename Tinner>
         ScanResult ContinueTo(
             const Token<T> &fromtoken, const Token<T> &totoken, bool multiline,
-            Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel,
-            bool increment = true
-        );
+            Tinner inner, ScannerSourceIterator &it,
+            int &nestinglevel
+        ) const;
 
+        // matches sequence starting with from set and continued with whileset
+        // including all inner sequences
         template <typename Tinner>
-        ScanResult FromSetWhile(
-            const CharSet &from, const CharSet &whileset, bool multiline,
-            Tinner inner, SourceToken &token, bool increment = true
-        );
+        SourceLength FromSetWhile(
+            const CharSet &from, const CharSet &whileset,
+            Tinner inner, ScannerSourceIterator &it
+        ) const;
 
+        // matches sequence starting with from sequence and continued with whileset
+        // icncluding all inner sequences
+        //      multiline - when true line breaks are included
+        //      notemptyehile - while part must not be empty, if this is true
+        //      and only from sequence matched whole match will fail
         template <typename T, typename Tinner>
-        ScanResult FromTokenWhile(
-            const Token<T> &from, const CharSet &whileset, bool multiline,
-            Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true
-        );
+        SourceLength FromTokenWhile(
+            const Token<T> &from, const CharSet &whileset,
+            Tinner inner, bool notemptywhile, ScannerSourceIterator &it
+        ) const;
 
+        // same as above with multiple tokens to start from
         template <typename T, typename Tinner>
-        ScanResult FromTokenWhile(
-            const FixedArray<const Token<T>> &from, const CharSet &whileset, bool multiline,
-            Tinner inner, bool notemptywhile, SourceToken &token, bool increment = true
-        );
+        SourceLength FromTokenWhile(
+            const FixedArray<const Token<T>> &from, const CharSet &whileset,
+            Tinner inner, bool notemptywhile, ScannerSourceIterator &it
+        ) const;
 
+        // match everything from given token till the end of line or source
+        template <typename T>
+        SourceLength FromToEndOfLine(const Token<T> &fromtoken, ScannerSourceIterator &it) const;
+
+        // matches sequence surrounded by fromtoken and totoken tokes
+        //      multiline - include line breaks
+        //      WithNesting version - allow nesting of sequences
+        //          FromTo { x { xxx } x } will match completely
+        //          FromToWithNesting { x { xxx } x } will match as { x { xxx }
         template <typename T, typename Tinner>
         ScanResult FromTo(
             const Token<T> &fromtoken, const Token<T> &totoken, bool multiline,
-            Tinner inner, bool allownesting, SourceToken &token, bool increment = true
-        );
+            Tinner inner, ScannerSourceIterator &it
+        ) const;
+
+        template <typename T, typename Tinner>
+        ScanResult FromToWithNesting(
+            const Token<T> &fromtoken, const Token<T> &totoken, bool multiline,
+            Tinner inner, ScannerSourceIterator &it
+        ) const;
+
+
+        // tokens and advancing
+        // ---------------------------------------------------------------------
+
+        // query token between two iterators
+        static constexpr SourceToken PeekToken(const ScannerSourceIterator &a, const ScannerSourceIterator &b) noexcept
+        {
+            return ScannerSourceIterator::difftotoken(a, b);
+        }
+
+        // query token between current iterator and other iterator
+        constexpr SourceToken PeekToken(const ScannerSourceIterator &b) const noexcept
+        {
+            return ScannerSourceIterator::difftotoken(p_it, b);
+        }
+
+        // query token and advance current iterator
+        constexpr SourceToken ReadToken(const ScannerSourceIterator &b) noexcept
+        {
+            auto result = ScannerSourceIterator::difftotoken(p_it, b);
+            p_it = b;
+            return result;
+        }
+
+        constexpr void DiscardToken(const ScannerSourceIterator &b) noexcept
+        {
+            p_it = b;
+        }
+
+        constexpr bool SkipLineBreak(ScannerSourceIterator &it) const noexcept;
+
+        // skip all whitespace (and optionally, line break) characters till start of the
+        // next possible token
+        //      advances current scanner iterator to the first potential token
+        // returns true if there's a potential token found
+        // false otherwise (end of source reached or line break when nextline is false)
+
+        constexpr bool SkipToToken(ScannerSourceIterator &it, bool nextline = true) const noexcept;
 
     private:
         // template ugly "magic" for allowing to pass lambda and nullptr values
@@ -527,20 +634,17 @@ namespace k_parser
         template <typename Tc>
         struct caller
         {
-            static SourceLength call(Tc callee) { return callee(); }
+            static constexpr SourceLength call(Tc callee, const ScannerSourceIterator &it) { return callee(it); }
         };
 
         template <>
         struct caller<decltype(nullptr)>
         {
-            static constexpr SourceLength call(decltype(nullptr) callee) { return 0; }
+            static constexpr SourceLength call(decltype(nullptr) callee, const ScannerSourceIterator &) { return 0; }
         };
 
     private:
         const Tsource         &p_source;
-        SourceLength           p_lines;
-
-    protected: // TODO: temp. it's accessible
         ScannerSourceIterator  p_it;
     };
 
@@ -548,22 +652,31 @@ namespace k_parser
     template <typename Tsource>
     constexpr bool ScannerSpecialCharChecker<Tsource>::IsSpace(const Tsource &source, const ScannerSourceIterator &it) noexcept
     {
+        // false if iterator at the end of the source
         if (it) {
             return false;
         }
 
+        // get current character
         auto c = source.CharCurrent(it);
 
-        return c >= 0 && c <= ' ' && c != '\r' && c != '\n';
+        // check if it's space character
+        return
+            c >= 0 && c <= ' ' &&   // default space character range
+            c != '\r' && c != '\n'; // except new line characters!
     }
 
     template <typename Tsource>
     constexpr SourceLength ScannerSpecialCharChecker<Tsource>::IsBreak(const Tsource &source, const ScannerSourceIterator &it) noexcept
     {
+        // no sequence if iterator at the end of the source
         if (it) {
             return 0;
         }
 
+        // TODO: this should be refactored and checked for broken sequences
+        //      basically there are 3 types of line end sequences
+        //          \n  \r\n \n\r
         auto seqit = it;
         auto c = source.CharCurrent(seqit);
 
@@ -583,66 +696,19 @@ namespace k_parser
     template <typename Tsource, typename Tchecker>
     constexpr Scanner<Tsource, Tchecker>::Scanner(const Tsource &source) noexcept :
         p_source(source),
-        p_it(source),
-        p_lines(0)
+        p_it(source)
     {}
 
     template <typename Tsource, typename Tchecker>
     constexpr Scanner<Tsource, Tchecker>::Scanner(const Tsource &source, const ScannerSourceIterator &start) noexcept :
         p_source(source),
-        p_it(start),
-        p_lines(0)
+        p_it(start)
     {}
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tc>
-    constexpr typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::AnyMatch(SourceToken &token, Tc func) noexcept
-    {
-        return func(token);
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename Tc, typename... Args>
-    constexpr typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::AnyMatch(SourceToken &token, Tc first, Args... args) noexcept
-    {
-        auto result = first(token);
-        if (result == ScanResult::NoMatch) {
-            result = AnyMatch(token, args...);
-        }
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename Tc>
-    constexpr typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::SequenceMatch(SourceToken &token, Tc func) noexcept
-    {
-        return func(token);
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename Tc, typename... Args>
-    constexpr typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::SequenceMatch(SourceToken &token, Tc first, Args... args) noexcept
-    {
-        auto result = first(token);
-        if (result == ScanResult::Match) {
-            SourceToken next;
-            result = SequenceMatch(next, args...);
-            if (result == ScanResult::NoMatch) {
-                p_source -= token.Length;
-            } else {
-                token.Length += next.Length;
-            }
-        }
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
     template <typename T1, typename T2>
-    constexpr int Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit)
+    constexpr typename Scanner<Tsource, Tchecker>::ComparisonResult
+    Scanner<Tsource, Tchecker>::CompareTokens(const Token<T1> &a, const Token<T2> &b, SourceSize limit) noexcept
     {
         auto minlen = a.Length < b.Length ? a.Length : b.Length;
 
@@ -669,8 +735,45 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
+    template <typename T1, typename T2>
+    constexpr typename Scanner<Tsource, Tchecker>::ComparisonResult
+        Scanner<Tsource, Tchecker>::CompareTokensCI(const Token<T1> &a, const Token<T2> &b, SourceSize limit) noexcept
+    {
+        auto minlen = a.Length < b.Length ? a.Length : b.Length;
+
+        if (limit >= 0 && minlen > limit) {
+            minlen = limit;
+        }
+
+        auto pa = a.Text;
+        auto pb = b.Text;
+
+        // NOTE: this functions is meant to compare ASCII charset only
+        auto upcase = [](int ch) {
+            if (ch >= 'a' && ch <= 'z') {
+                return ch - ('a' - 'A');
+            }
+            return ch;
+        };
+
+        while (minlen-- > 0) {
+            // TODO: refine diff comparison
+            auto diff = upcase(int(*pa++)) - upcase(int(*pb++));
+            if (diff != 0) {
+                return diff;
+            }
+        }
+
+        if (limit >= 0) {
+            return 0;
+        }
+
+        return a.Length - b.Length;
+    }
+
+    template <typename Tsource, typename Tchecker>
     template <typename T>
-    constexpr bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const Token<T> &sequence) noexcept
+    constexpr bool Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const Token<T> &sequence) const noexcept
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -681,7 +784,8 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    constexpr int Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept
+    constexpr typename Scanner<Tsource, Tchecker>::SearchResult
+    Scanner<Tsource, Tchecker>::StartsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept
     {
         auto found = std::find_if(
             sequences.begin(), sequences.end(),
@@ -693,7 +797,7 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    constexpr bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const Token<T> &sequence) noexcept
+    constexpr bool Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const Token<T> &sequence) const noexcept
     {
         auto tok = SourceTokenToToken(token);
         bool result =
@@ -707,7 +811,8 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    constexpr int Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) noexcept
+    constexpr typename Scanner<Tsource, Tchecker>::SearchResult
+    Scanner<Tsource, Tchecker>::EndsWith(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept
     {
         auto found = std::find_if(
             sequences.begin(), sequences.end(),
@@ -718,125 +823,9 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    constexpr bool Scanner<Tsource, Tchecker>::SkipToToken(SourceToken &token, bool nextline) noexcept
-    {
-        token = SourceToken(p_it.Position());
-
-        while (true) {
-            if (Tchecker::IsSpace(p_source, p_it)) {
-                p_it += 1;
-                ++token.Length;
-            } else {
-                auto br = Tchecker::IsBreak(p_source, p_it);
-
-                if (br == 0) {
-                    return !p_it;
-                }
-
-                if (nextline) {
-                    p_it += br;
-                    token.Length += br;
-                    ++p_lines;
-                } else {
-                    return false;
-                }
-            }
-        }
-    }
-
-    template <typename Tsource, typename Tchecker>
     template <typename T>
-    bool Scanner<Tsource, Tchecker>::Check(T c, ScannerSourceIterator &it)
-    {
-        // TODO: handle different type char comparison
-        bool result = !it && p_source.CharCurrent(it) == c;
-
-        if (result) {
-            it += 1;
-        }
-
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    bool Scanner<Tsource, Tchecker>::Check(const Token<T> &s, ScannerSourceIterator &it)
-    {
-        bool result =
-            HasCharacters(it, s.Length) &&
-            CompareTokens(
-                s,
-                p_source.SourceTokenToToken(SourceToken(it.Position(), s.Length))
-            ) == 0;
-
-        if (result) {
-            it += s.Length;
-        }
-
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    int Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, ScannerSourceIterator &it)
-    {
-        auto found = std::find_if(
-            characters.begin(), characters.end(),
-            [&it, this](const auto c) { return Check(c, it); }
-        );
-
-        return found == characters.end() ? NO_MATCH : int(found - characters.begin());
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, SourceToken &token, ScannerSourceIterator &it)
-    {
-        auto pos = it.Position();
-        auto result = CheckAny(characters, it) != NO_MATCH;
-
-        token = SourceToken(pos, result ? 1 : 0);
-
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    int Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceLength &length, ScannerSourceIterator &it)
-    {
-        length = 0;
-
-        auto found = std::find_if(
-            compounds.begin(), compounds.end(),
-            [&it, this](const auto &c) { return Check(c, it); }
-        );
-
-        if (found == compounds.end()) {
-            return NO_MATCH;
-        }
-
-        length = found->Length;
-
-        return int(found - compounds.begin());
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    bool Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, SourceToken &token, ScannerSourceIterator &it)
-    {
-        auto length = 0;
-        auto pos = it.Position();
-
-        bool result = CheckAny(compounds, length, it) != NO_MATCH;
-
-        token = SourceToken(pos, length);
-
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T>
-    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const Token<T> &characters)
+    constexpr typename Scanner<Tsource, Tchecker>::SearchResult
+    Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const Token<T> &characters) const noexcept
     {
         if (token.Length != 1) {
             return NO_MATCH;
@@ -856,15 +845,14 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T>
-    int Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const FixedArray<const Token<T>> &sequences)
+    constexpr typename Scanner<Tsource, Tchecker>::SearchResult
+    Scanner<Tsource, Tchecker>::TokenCheckAny(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept
     {
         auto t = SourceTokenToToken(token);
 
         auto bound = std::lower_bound(
             sequences.begin(), sequences.end(), t,
-            [](const auto &a, const auto &b) {
-                return CompareTokens(a, b) < 0;
-            }
+            [](const auto &a, const auto &b) { return CompareTokens(a, b) < 0; }
         );
 
         if (bound != sequences.end() && CompareTokens(t, *bound) >= 0) {
@@ -875,92 +863,217 @@ namespace k_parser
     }
 
     template <typename Tsource, typename Tchecker>
-    template <typename Tinner>
-    bool Scanner<Tsource, Tchecker>::GetCharToken(bool nextline, Tinner inner, SourceToken &token, bool increment)
+    template <typename T>
+    constexpr typename Scanner<Tsource, Tchecker>::SearchResult
+        Scanner<Tsource, Tchecker>::TokenCheckAnyCI(const SourceToken &token, const FixedArray<const Token<T>> &sequences) const noexcept
     {
-        token = SourceToken(p_it.Position());
+        auto t = SourceTokenToToken(token);
 
-        auto result = false;
-        auto len = Tchecker::IsBreak(p_source, p_it);
+        auto bound = std::lower_bound(
+            sequences.begin(), sequences.end(), t,
+            [](const auto &a, const auto &b) { return CompareTokensCI(a, b) < 0; }
+        );
+
+        if (bound != sequences.end() && CompareTokensCI(t, *bound) >= 0) {
+            return int(bound - sequences.begin());
+        }
+
+        return NO_MATCH;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::Check(T c, ScannerSourceIterator &it, bool advance) const noexcept
+    {
+        bool result =
+            !it &&
+            Helpers::CharValue(p_source.CharCurrent(it)) == Helpers::CharValue(c);
+
+        if (result) {
+            if (advance) {
+                it += 1;
+            }
+            return 1;
+        }
+
+        return 0;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::Check(const Token<T> &s, ScannerSourceIterator &it, bool advance) const noexcept
+    {
+        bool result =
+            HasCharacters(it, s.Length) &&
+            CompareTokens(
+                s,
+                p_source.SourceTokenToToken(SourceToken(it.Position(), s.Length))
+            ) == 0;
+
+        if (result) {
+            if (advance) {
+                it += s.Length;
+            }
+            return s.Length;
+        }
+
+        return 0;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::CheckAny(const Token<T> &characters, ScannerSourceIterator &it, bool advance) const noexcept
+    {
+        auto found = std::find_if(
+            characters.begin(), characters.end(),
+            [&it, advance, this](const auto c) { return Check(c, it, advance) != 0; }
+        );
+
+        // NOTE: iterator is advanced by inner Check call, captured by reference
+
+        return found == characters.end() ? 0 : 1;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::CheckAny(const FixedArray<const Token<T>> &compounds, ScannerSourceIterator &it, bool advance) const noexcept
+    {
+        auto found = std::find_if(
+            compounds.begin(), compounds.end(),
+            [&it, advance, this](const auto &c) { return Check(c, it, advance) != 0; }
+        );
+
+        // NOTE: iterator is advanced by inner Check call, captured by reference
+
+        return found == compounds.end() ? 0 : found->Length;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename Tinner>
+    SourceLength Scanner<Tsource, Tchecker>::GetCharToken(Tinner inner, ScannerSourceIterator &it, bool advance) const
+    {
+        auto len = Tchecker::IsBreak(p_source, it);
+
+        if (len > 0) {
+            return 0;
+        }
+
+        len = caller<Tinner>::call(inner, it);
+        if (len == 0 && !it) {
+            len = 1;
+        }
+
+        if (advance) {
+            it += len;
+        }
+
+        return len;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename Tinner>
+    SourceLength Scanner<Tsource, Tchecker>::GetCharToken(bool nextline, Tinner inner, ScannerSourceIterator &it, bool advance) const
+    {
+        auto len = Tchecker::IsBreak(p_source, it);
 
         if (len == 0) {
-            len = caller<Tinner>::call(inner);
-            if (len == 0 && p_it) {
-                return false;
+            len = caller<Tinner>::call(inner, it);
+            if (len == 0 && !it) {
+                len = 1;
             }
-            token.Length = len == 0 ? 1 : len;
-            result = true;
         } else {
             if (nextline) {
-                token.Length = len;
-                ++p_lines;
+                if (advance) {
+                    it.AdvanceLine();
+                }
+            } else {
+                len = 0;
             }
-            result = nextline;
         }
 
-        if (result && increment) {
-            p_it += token.Length;
+        if (advance) {
+            it += len;
         }
 
-        return result;
+        return len;
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename Tinner>
-    bool Scanner<Tsource, Tchecker>::CheckCharToken(const CharSet &set, bool nextline, Tinner inner, SourceToken &token, bool increment)
+    SourceLength Scanner<Tsource, Tchecker>::GetCharToken(const CharSet &set, Tinner inner, ScannerSourceIterator &it, bool advance) const
     {
-        auto result =
-            GetCharToken(nextline, inner, token, false) &&
-            (token.Length > 1 || set.in(p_source.CharCurrent(p_it)));
+        auto result = GetCharToken(inner, it, false);
 
-        if (result && increment) {
-            p_it += token.Length;
+        if (result > 1 || result == 1 && set.in(p_source.CharCurrent(it))) {
+            if (advance) {
+                it += result;
+            }
+            return result;
         }
 
-        return result;
+        return 0;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    SourceLength Scanner<Tsource, Tchecker>::ContinueToEndOfLine(ScannerSourceIterator &it) const
+    {
+        auto start = it;
+        while (GetCharToken(nullptr, it)) {}
+        return it - start;
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::ContinueWhile(const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment)
+    SourceLength Scanner<Tsource, Tchecker>::ContinueWhile(const CharSet &whileset, Tinner inner, ScannerSourceIterator &it) const
     {
-        token = SourceToken(p_it.Position());
-
-        SourceToken cs;
-        while (CheckCharToken(whileset, multiline, inner, cs)) {
-            token.Length += cs.Length;
-        }
-
-        if (!increment) {
-            p_it -= token.Length;
-        }
-
-        return ScanResult::Match;
+        auto start = it;
+        while (GetCharToken(whileset, inner, it)) {}
+        return it - start;
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename T, typename Tinner>
     typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, int &nestinglevel, bool increment)
+    Scanner<Tsource, Tchecker>::ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, ScannerSourceIterator &it) const
     {
-        token = SourceToken(p_it.Position());
+        auto result = ScanResult::NoMatch;
+
+        while (auto adv = GetCharToken(multiline, inner, it, false)) {
+            if (Check(totoken, it)) {
+                result = ScanResult::Match;
+                break;
+            }
+
+            it += adv;
+        }
+
+        if (result != ScanResult::Match) {
+            result = it ? ScanResult::MatchTrimmedEOF : ScanResult::MatchTrimmedEOL;
+        }
+
+        return result;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult
+    Scanner<Tsource, Tchecker>::ContinueTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, ScannerSourceIterator &it, int &nestinglevel) const
+    {
+        assert(nestinglevel > 0);
 
         auto result = ScanResult::NoMatch;
 
-        SourceToken cs;
-        while (GetCharToken(multiline, inner, cs, false)) {
-            if (allownesting && Check(fromtoken, p_it)) {
+        while (auto adv = GetCharToken(multiline, inner, it, false)) {
+            if (Check(fromtoken, it)) {
                 ++nestinglevel;
-                token.Length += fromtoken.Length;
                 continue;
             }
 
-            if (Check(totoken, p_it)) {
+            if (Check(totoken, it)) {
                 --nestinglevel;
-                token.Length += totoken.Length;
 
-                if (nestinglevel == 0) {
+                // NOTE: actually this should never reach negative value
+                if (nestinglevel <= 0) {
                     result = ScanResult::Match;
                     break;
                 }
@@ -968,21 +1081,11 @@ namespace k_parser
                 continue;
             }
 
-            p_it += cs.Length;
-            token.Length += cs.Length;
+            it += adv;
         }
 
-        if (result != ScanResult::Match)
-        {
-            if (p_it) {
-                result = ScanResult::MatchTrimmedEOF;
-            } else {
-                result = ScanResult::MatchTrimmedEOL;
-            }
-        }
-
-        if (!increment) {
-            p_it -= token.Length;
+        if (result != ScanResult::Match) {
+            result = it ? ScanResult::MatchTrimmedEOF : ScanResult::MatchTrimmedEOL;
         }
 
         return result;
@@ -990,97 +1093,130 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::FromSetWhile(const CharSet &from, const CharSet &whileset, bool multiline, Tinner inner, SourceToken &token, bool increment)
+    SourceLength Scanner<Tsource, Tchecker>::FromSetWhile(const CharSet &from, const CharSet &whileset, Tinner inner, ScannerSourceIterator &it) const
     {
-        if (!CheckCharToken(from, multiline, inner, token)) {
-            return ScanResult::NoMatch;
+        auto start = it;
+
+        if (!GetCharToken(from, inner, it)) {
+            return 0;
         }
 
-        SourceToken cs;
-        auto result = ContinueWhile(whileset, multiline, inner, cs);
-        token.Length += cs.Length;
+        ContinueWhile(whileset, inner, it);
 
-        if (!increment) {
-            p_it -= token.Length;
+        return it - start;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T, typename Tinner>
+    SourceLength Scanner<Tsource, Tchecker>::FromTokenWhile(const Token<T> &from, const CharSet &whileset, Tinner inner, bool notemptywhile, ScannerSourceIterator &it) const
+    {
+        auto current = it;
+
+        if (!Check(from, current)) {
+            return 0;
         }
+
+        auto result = ContinueWhile(whileset, inner, current);
+        if (notemptywhile && NoMatch(result)) {
+            return 0;
+        }
+
+        result = current - it;
+        it = current;
 
         return result;
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename T, typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::FromTokenWhile(const Token<T> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
+    SourceLength Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const Token<T>> &from, const CharSet &whileset, Tinner inner, bool notemptywhile, ScannerSourceIterator &it) const
     {
-        token = SourceToken(p_it.Position());
-
-        if (!Check(from, p_it)) {
-            return ScanResult::NoMatch;
-        }
-
-        token.Length += from.Length;
-
-        SourceToken cs;
-        auto result = ContinueWhile(whileset, multiline, inner, cs);
-        token.Length += cs.Length;
-
-        if (notemptywhile && token.Length <= from.Length) {
-            p_it -= token.Length;
-            return ScanResult::NoMatch;
-        }
-
-        if (!increment) {
-            p_it -= token.Length;
-        }
-
-        return result;
-    }
-
-    template <typename Tsource, typename Tchecker>
-    template <typename T, typename Tinner>
-    typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::FromTokenWhile(const FixedArray<const Token<T>> &from, const CharSet &whileset, bool multiline, Tinner inner, bool notemptywhile, SourceToken &token, bool increment)
-    {
-        auto result = ScanResult::NoMatch;
-
         for (auto &&f : from) {
-            result = FromTokenWhile(
-                f, whileset, multiline, inner,
-                notemptywhile, token, increment
-            );
-
-            if (result != ScanResult::NoMatch) {
+            if (auto result = FromTokenWhile(f, whileset, inner, notemptywhile, it)) {
                 return result;
             }
         }
 
-        return result;
+        return 0;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T>
+    SourceLength Scanner<Tsource, Tchecker>::FromToEndOfLine(const Token<T> &fromtoken, ScannerSourceIterator &it) const
+    {
+        auto start = it;
+
+        if (!Check(fromtoken, it)) {
+            return 0;
+        }
+
+        while (GetCharToken(nullptr, it)) {}
+
+        return start - it;
     }
 
     template <typename Tsource, typename Tchecker>
     template <typename T, typename Tinner>
     typename Scanner<Tsource, Tchecker>::ScanResult
-    Scanner<Tsource, Tchecker>::FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, bool allownesting, SourceToken &token, bool increment)
+        Scanner<Tsource, Tchecker>::FromTo(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, ScannerSourceIterator &it) const
     {
-        token = SourceToken(p_it.Position());
-
-        if (!Check(fromtoken, p_it)) {
+        if (!Check(fromtoken, it)) {
             return ScanResult::NoMatch;
         }
 
-        token.Length += fromtoken.Length;
+        return ContinueTo(fromtoken, totoken, multiline, inner, it);
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename T, typename Tinner>
+    typename Scanner<Tsource, Tchecker>::ScanResult
+    Scanner<Tsource, Tchecker>::FromToWithNesting(const Token<T> &fromtoken, const Token<T> &totoken, bool multiline, Tinner inner, ScannerSourceIterator &it) const
+    {
+        if (!Check(fromtoken, it)) {
+            return ScanResult::NoMatch;
+        }
 
         int nestinglevel = 1;
 
-        SourceToken cs;
-        auto result = ContinueTo(fromtoken, totoken, multiline, inner, allownesting, cs, nestinglevel);
-        token.Length += cs.Length;
+        return ContinueTo(fromtoken, totoken, multiline, inner, it, nestinglevel);
+    }
 
-        if (!increment) {
-            p_it -= token.Length;
+    template <typename Tsource, typename Tchecker>
+    constexpr bool Scanner<Tsource, Tchecker>::SkipLineBreak(ScannerSourceIterator &it) const noexcept
+    {
+        auto brk = Tchecker::IsBreak(p_source, it);
+
+        if (brk) {
+            it += brk;
+            it.AdvanceLine();
+            return true;
         }
 
-        return result;
+        // TODO: or should it return !it to return false only at source end?
+        return false;
     }
+
+    template <typename Tsource, typename Tchecker>
+    constexpr bool Scanner<Tsource, Tchecker>::SkipToToken(ScannerSourceIterator &it, bool nextline) const noexcept
+    {
+        while (true) {
+            if (Tchecker::IsSpace(p_source, it)) {
+                it += 1;
+            } else {
+                auto br = Tchecker::IsBreak(p_source, it);
+
+                if (br == 0) {
+                    return !it;
+                }
+
+                if (nextline) {
+                    it += br;
+                    it.AdvanceLine();
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+
 } // namespace k_scanner
