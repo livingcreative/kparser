@@ -42,7 +42,8 @@ namespace k_pascalparser
         struct Token
         {
             Token() :
-                Type(TokenType::None)
+                Type(TokenType::None),
+                Result(ScanResult::NoMatch)
             {}
 
             Token(TokenType _type, const k_parser::SourceToken &_token) :
@@ -54,6 +55,7 @@ namespace k_pascalparser
 
             TokenType             Type;
             k_parser::SourceToken SourceToken;
+            k_parser::ScanResult  Result;
         };
 
         enum class IncrementalCurrentType
@@ -80,8 +82,8 @@ namespace k_pascalparser
         bool ScanIdent(k_parser::ScannerSourceIterator &it) const;
         bool ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
         bool ScanDirective(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
-        typename PascalScanner<Tsource>::ScanResult ScanString(k_parser::ScannerSourceIterator &it) const;
-        typename PascalScanner<Tsource>::ScanResult ScanDQString(k_parser::ScannerSourceIterator &it) const;
+        k_parser::ScanResult ScanString(k_parser::ScannerSourceIterator &it) const;
+        k_parser::ScanResult ScanDQString(k_parser::ScannerSourceIterator &it) const;
         bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
         bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
         bool ScanReal(k_parser::ScannerSourceIterator &it) const;
@@ -222,7 +224,7 @@ namespace k_pascalparser
                         data.Current == int(IncrementalCurrentType::MultilineDirective) ?
                         C("}") : C("*)");
 
-                    auto result = ContinueTo(C(""), endseq, true, nullptr, it);
+                    auto result = ContinueTo(endseq, true, nullptr, it);
 
                     if (result != ScanResult::MatchTrimmedEOF) {
                         data.Current = int(IncrementalCurrentType::None);
@@ -366,8 +368,7 @@ namespace k_pascalparser
     }
 
     template <typename Tsource>
-    typename PascalScanner<Tsource>::ScanResult
-    PascalScanner<Tsource>::ScanString(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult PascalScanner<Tsource>::ScanString(k_parser::ScannerSourceIterator &it) const
     {
         auto start = it;
         bool a, b;
@@ -385,8 +386,7 @@ namespace k_pascalparser
     }
 
     template <typename Tsource>
-    typename PascalScanner<Tsource>::ScanResult
-    PascalScanner<Tsource>::ScanDQString(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult PascalScanner<Tsource>::ScanDQString(k_parser::ScannerSourceIterator &it) const
     {
         return FromTo(C("\""), C("\""), false, nullptr, it);
     }

@@ -43,7 +43,7 @@ namespace k_parser
     };
 
 
-    // operator group defines operator kind, there are two groups
+    // operator group defines operator kind, there are three groups
     //      Unary operators act on single operand
     //      Binary operators act on two operands
     //      Ternary operators act on three operands (e.g. ?: conditional operator)
@@ -64,9 +64,15 @@ namespace k_parser
     //  operator can be applied in-place for immediate computation and return computed value
     //  or it can return AST node which will contain passed operands as children nodes
 
+    template <typename D>
     class Operator
     {
     public:
+        // construct empty (invalid) operator
+        Operator();
+        // construct operator from given definition
+        Operator(const D &def);
+
         // Apply unary operation
         Operand operator()(const Operand &other) const;
         // Apply binary operation
@@ -93,7 +99,7 @@ namespace k_parser
     //      this class has no implementation!
     //      it just shows what functions real ExpressionTokenParser class should implement
 
-    template <typename F, typename Op>
+    template <typename Op, typename D>
     class ExpressionTokenParser
     {
     public:
@@ -108,7 +114,7 @@ namespace k_parser
         bool RightBracket();
 
         // parse and return whether current token matches given operator definition
-        bool Operator(const Op &def);
+        bool Operator(const D &def);
 
         // parse ternary operator "separator" part (e.g. : token in ?: conditional operator)
         // presense of separator is mandatory, therefore returning false indicates error
@@ -123,22 +129,26 @@ namespace k_parser
     //  class for parsing (and optionally evaluating) expressions
     //  call Expression() function of class instance to parse expression with given
     //  token parser
+    //      P  - expression token parser type
+    //      F  - operator type
+    //      Op - operand type
+    //      D  - operator definition type
 
     template <typename P, typename F, typename Op, typename D>
     class ExpressionParser
     {
     public:
-        // minimum required operator definition struct
+        // minimum required operator definition struct example
+        /*
         struct OperatorDefinition
         {
             OperatorGroup group;
             int           level;
         };
-
+        */
 
         // construct expression parser instance with given token parser implementation
-        template <size_t length>
-        constexpr ExpressionParser(P &tokenparser, const D(&operators)[length]) noexcept;
+        constexpr ExpressionParser(P &tokenparser, const FixedArray<D> &operators) noexcept;
 
         // parse expression
         // returns parsed expression operand, which is depending on implementation
@@ -154,18 +164,15 @@ namespace k_parser
         Op OperatorOperand(int level);
 
     private:
-        P       &p_tokenparser;
-        const D *p_operatorsb;
-        const D *p_operatorse;
+        P                   &p_tokenparser;
+        const FixedArray<D>  p_operators;
     };
 
 
     template <typename P, typename F, typename Op, typename D>
-    template <size_t length>
-    constexpr ExpressionParser<P, F, Op, D>::ExpressionParser(P &tokenparser, const D(&operators)[length]) noexcept :
+    constexpr ExpressionParser<P, F, Op, D>::ExpressionParser(P &tokenparser, const FixedArray<D> &operators) noexcept :
         p_tokenparser(tokenparser),
-        p_operatorsb(operators),
-        p_operatorse(operators + length)
+        p_operators(operators)
     {}
 
     template <typename P, typename F, typename Op, typename D>
@@ -185,6 +192,7 @@ namespace k_parser
         if (sub) {
             // parse subexpression as independent expression
             auto op = Expression();
+            // TODO: handle error - upsense of mandatory right bracket
             p_tokenparser.RightBracket();
             return op;
         } else {
@@ -198,21 +206,19 @@ namespace k_parser
     {
         // parse operator
         auto op = std::find_if(
-            p_operatorsb, p_operatorse,
+            p_operators.begin(), p_operators.end(),
             [level, group, this](auto &od) {
-                if (od.group != group) {
+                // skip definitions with unwanted group/level
+                if (od.group != group || level > od.level) {
                     return false;
                 }
-
-                if (level > od.level) {
-                    return false;
-                }
-
+                // try to parse matching operator definition and return it on match
                 return p_tokenparser.Operator(od);
             }
         );
 
-        return op == p_operatorse ? F() : F(*op);
+        // return empty operator if nothing was parsed or found one otherwise
+        return op == p_operators.end() ? F() : F(*op);
     }
 
     template <typename P, typename F, typename Op, typename D>
@@ -247,6 +253,7 @@ namespace k_parser
                 auto a = Expression();
 
                 // parse ternary operator separator
+                // TODO: handle error
                 p_tokenparser.TernarySeparator();
 
                 // right part of ternary operator subexpression parsed as regular operator operand

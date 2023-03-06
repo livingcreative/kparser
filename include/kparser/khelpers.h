@@ -28,7 +28,7 @@ namespace k_parser
             p_count(0)
         {}
 
-        // initialize from static C array with knwon length
+        // initialize from static C array with known length
         template <size_t length>
         constexpr FixedArray(T(&items)[length]) noexcept :
             p_items(items),
