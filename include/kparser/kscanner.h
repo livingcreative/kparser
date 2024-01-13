@@ -1,4 +1,4 @@
-﻿/*
+/*
         KPARSER PROJECT
 
     Utilities library for parsers programming
@@ -161,6 +161,7 @@ namespace k_parser
         constexpr ScannerSourceIterator() noexcept :
             p_position(0),
             p_line(0),
+            p_linestart(0),
             p_length(0)
         {}
 
@@ -168,6 +169,7 @@ namespace k_parser
         constexpr ScannerSourceIterator(const ScannerSourceIterator &source) noexcept :
             p_position(source.p_position),
             p_line(source.p_line),
+            p_linestart(source.p_linestart),
             p_length(source.p_length)
         {}
 
@@ -179,6 +181,7 @@ namespace k_parser
         constexpr ScannerSourceIterator(const T &source) noexcept :
             p_position(0),
             p_line(0),
+            p_linestart(0),
             p_length(source.length())
         {}
 
@@ -192,6 +195,7 @@ namespace k_parser
         {
             p_position = source.p_position;
             p_line = source.p_line;
+            p_linestart = source.p_linestart;
             p_length = source.p_length;
             return *this;
         }
@@ -214,14 +218,16 @@ namespace k_parser
         // advance internal line counter
         void AdvanceLine()
         {
+            p_linestart = p_position;
             ++p_line;
         }
 
         // current position inside source text
         constexpr SourcePosition position() const noexcept { return p_position; }
+        constexpr SourcePosition col() const noexcept { return p_position - p_linestart; }
         constexpr SourcePosition line() const noexcept { return p_line; }
 
-        // make SourceToken from to iterators
+        // make SourceToken from two iterators
         //      b must be equal or further than a
         static constexpr SourceToken difftotoken(const ScannerSourceIterator &a, const ScannerSourceIterator &b) noexcept
         {
@@ -230,9 +236,10 @@ namespace k_parser
         }
 
     private:
-        SourcePosition p_position;
-        SourcePosition p_line;
-        SourceLength   p_length;
+        SourcePosition p_position;  // current absolute position (chars/codepoints)
+        SourcePosition p_line;      // current line
+        SourcePosition p_linestart; // absolute position for current line start
+        SourceLength   p_length;    // total length of the source (chars/codepoints)
     };
 
 
@@ -1093,7 +1100,11 @@ namespace k_parser
             if (nextline) {
                 // advance it line if advance requested and line breaks are allowed
                 if (advance) {
+                    // NOTE: advance it by line break len before advancing line so
+                    //       correct line start will be set
+                    it += len;
                     it.AdvanceLine();
+                    return len;
                 }
             } else {
                 // return 0, line breaks are not allowed
