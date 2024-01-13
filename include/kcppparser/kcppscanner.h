@@ -37,6 +37,8 @@ namespace k_cppparser
             MultiLineComment,  // multi line comment  /* ... */
             Symbol,            // any standalone character or compound sequence
             Preprocessor,      // preprocessor token (# sign which start preprocessor line)
+            PreprocessorHash,  // preprocessor hash (stringify, #), valid inside preprocessor mode
+            PreprocessorPaste, // preprocessor paste (##), valid inside preprocessor mode
             Spacer,            // sequence of spaces/line breaks
             Invalid            // invalid token/character
         };
@@ -68,11 +70,12 @@ namespace k_cppparser
 
         enum class Mode
         {
-            Source,
-            SingleLineComment,
-            MultiLineComment,
-            Preprocessor,
-            Assembler
+            Source,              // regular source mode
+            SingleLineComment,   // single line comment mode
+            MultiLineComment,    // multiline comment mode
+            Preprocessor,        // regular preprocessor mode
+            PreprocessorInclude, // preprocessor include directive
+            Assembler            // inline assembly
         };
 
         Token ReadToken(Mode mode, bool includespacers = false);
@@ -81,7 +84,7 @@ namespace k_cppparser
         // inner scans
         k_parser::SourceLength IsEscape(const k_parser::ScannerSourceIterator &it) const;
 
-        // primary scans
+        // primary scans (will set token type and advance if succeded)
         void ScanIdent(Token &token, k_parser::ScannerSourceIterator &it) const;
         void ScanComment(Token &token, k_parser::ScannerSourceIterator &it) const;
         void ScanString(Token &token, bool preprocessor, k_parser::ScannerSourceIterator &it) const;
@@ -89,6 +92,9 @@ namespace k_cppparser
         void ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const;
         void ScanCharacter(Token &token, k_parser::ScannerSourceIterator &it) const;
         void ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const;
+
+        // wide string/char helper
+        bool ScanWideStringOrCharacter(Token &token, k_parser::ScannerSourceIterator &it) const;
 
         // comment scan helpers
         k_parser::ScanResult ScanSingleLineComment(k_parser::ScannerSourceIterator &it) const;
@@ -178,7 +184,10 @@ namespace k_cppparser
         if (c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' ||
             c >= L'\x0100')
         {
-            ScanIdent(token, it);
+            // L can start "wide" string/character, try it first
+            if (c != 'L' || !ScanWideStringOrCharacter(token, it)) {
+                ScanIdent(token, it);
+            }
         }
         // next most frequent token type is comment, comments start with /
         // character, so try scan a comment when / encountered
@@ -190,10 +199,11 @@ namespace k_cppparser
         // try scan string
         else if (c == '"')
         {
-            ScanString(token, mode == Mode::Preprocessor, it);
+            // in preprocessor include mode escapes inside the string are ignored
+            ScanString(token, mode == Mode::PreprocessorInclude, it);
         }
         // preprocessor include string
-        else if (c == '<' && mode == Mode::Preprocessor) {
+        else if (c == '<' && mode == Mode::PreprocessorInclude) {
             ScanPreprocessorString(token, it);
         }
         // only number could start with digits, try to scan number
@@ -217,11 +227,21 @@ namespace k_cppparser
         // only preprocessor directive can start with # character
         else if (c == '#')
         {
-            ScanPreprocessor(token, it);
+            switch (mode) {
+                case Mode::Preprocessor:
+                    ScanPreprocessor(token, it);
+                    break;
+
+                case Mode::Source:
+                    GetCharToken(it);
+                    token.Type = TokenType::Preprocessor;
+                    token.Result = ScanResult::Match;
+                    break;
+            }
         }
-        else if (c == '\\' && mode == Mode::Preprocessor)
+        else if (c == '\\' && (mode == Mode::Preprocessor || mode == Mode::PreprocessorInclude))
         {
-            GetCharToken(nullptr, it);
+            GetCharToken(it);
             token.Type = TokenType::Symbol;
             token.Result = ScanResult::Match;
         }
@@ -230,7 +250,7 @@ namespace k_cppparser
         // this is symbol or invalid character token, check for it here
         // try to match compounds first, and single characters next
         if (token.Type == TokenType::None) {
-            bool validsymbol =
+            auto validsymbol =
                 CheckAny(A(p_compounds), it) ||
                 CheckAny(C(".();,{}=[]:<>+-*/?%&|^!~"), it);
 
@@ -239,7 +259,7 @@ namespace k_cppparser
                 token.Result = ScanResult::Match;
             } else {
                 // all other stuff (unknown/invalid symbols)
-                GetCharToken(nullptr, it);
+                GetCharToken(it);
                 token.Type = TokenType::Invalid;
             }
         }
@@ -330,6 +350,29 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
+    bool CPPScanner<Tsource>::ScanWideStringOrCharacter(Token &token, k_parser::ScannerSourceIterator &it) const
+    {
+        auto current = it;
+
+        // eat L
+        GetCharToken(current);
+
+        ScanString(token, false, current);
+        if (Match(token.Result)) {
+            it = current;
+            return true;
+        }
+
+        ScanCharacter(token, current);
+        if (Match(token.Result)) {
+            it = current;
+            return true;
+        }
+
+        return false;
+    }
+
+    template <typename Tsource>
     void CPPScanner<Tsource>::ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const
     {
         // it is at least some integer number token
@@ -363,11 +406,16 @@ namespace k_cppparser
     template <typename Tsource>
     void CPPScanner<Tsource>::ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const
     {
-        if (Check('#', it)) {
-            token.Result = ScanResult::Match;
-            token.Type = TokenType::Preprocessor;
+        token.Result = ScanResult::Match;
+
+        if (Check(C("##"), it)) {
+            token.Type = TokenType::PreprocessorPaste;
+            return;
         }
-    }
+
+        GetCharToken(it);
+        token.Type = TokenType::PreprocessorHash;
+     }
 
 
     template <typename Tsource>
@@ -523,7 +571,7 @@ namespace k_cppparser
     template <typename Tsource>
     const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_keywords[] = {
         "alignas", "alignof", "asm", "auto", "bool", "break", "case", "catch",
-        "char", "char16_t", "char32_t", "class", "const", "constexpr", "const_cast",
+        "char", "char16_t", "char32_t", "class", "const", "const_cast", "constexpr",
         "continue", "decltype", "default", "delete", "do", "double", "dynamic_cast",
         "else", "enum", "explicit", "export", "extern", "false", "final", "float",
         "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
