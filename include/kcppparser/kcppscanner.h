@@ -13,13 +13,16 @@
 */
 
 #pragma once
+
 #include "kparser/kscanner.h"
+#include "kparser/kscannercommon.h"
+
 
 namespace k_cppparser
 {
 
     template <typename Tsource>
-    class CPPScanner : public k_parser::Scanner<Tsource>
+    class CPPScanner : public k_parser::Scanner<Tsource>, public k_parser::ScannerCommonDefs
     {
     public:
         CPPScanner(Tsource &source);
@@ -518,38 +521,6 @@ namespace k_cppparser
         return result;
     }
 
-    
-
-
-    template <typename Tsource>
-    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_numeric[] = {
-        { '0', '9' }
-    };
-
-    template <typename Tsource>
-    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_hexadecimal[] = {
-        { '0', '9' },
-        { 'A', 'F' },
-        { 'a', 'f' }
-    };
-
-    template <typename Tsource>
-    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_alpha[] = {
-        { '_', '_' },
-        { 'A', 'Z' },
-        { 'a', 'z' },
-        // TODO: refine alpha range
-        { L'\x0100', L'\xFFFF' }
-    };
-
-    template <typename Tsource>
-    const typename CPPScanner<Tsource>::CharRange CPPScanner<Tsource>::p_alphanum[] = {
-        { '_', '_' },
-        { 'A', 'Z' },
-        { 'a', 'z' },
-        { L'\x0100', L'\xFFFF' },
-        { '0', '9' }
-    };
 
     template <typename Tsource>
     const typename CPPScanner<Tsource>::TokenChar CPPScanner<Tsource>::p_hexprefixes[] = {

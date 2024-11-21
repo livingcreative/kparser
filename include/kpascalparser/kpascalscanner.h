@@ -13,13 +13,16 @@
 */
 
 #pragma once
+
 #include "kparser/kscanner.h"
+#include "kparser/kscannercommon.h"
+
 
 namespace k_pascalparser
 {
 
     template <typename Tsource>
-    class PascalScanner : public k_parser::Scanner<Tsource>
+    class PascalScanner : public k_parser::Scanner<Tsource>, public k_parser::ScannerCommonDefs
     {
     public:
         PascalScanner(Tsource &source);
@@ -104,36 +107,6 @@ namespace k_pascalparser
         static const TokenChar p_keywords[71];   // all Pascal keywords
     };
 
-
-    template <typename Tsource>
-    const typename PascalScanner<Tsource>::CharRange PascalScanner<Tsource>::p_numeric[] = {
-        { '0', '9' }
-    };
-
-    template <typename Tsource>
-    const typename PascalScanner<Tsource>::CharRange PascalScanner<Tsource>::p_hexadecimal[] = {
-        { '0', '9' },
-        { 'A', 'F' },
-        { 'a', 'f' }
-    };
-
-    template <typename Tsource>
-    const typename PascalScanner<Tsource>::CharRange PascalScanner<Tsource>::p_alpha[] = {
-        { '_', '_' },
-        { 'A', 'Z' },
-        { 'a', 'z' },
-        // TODO: refine alpha range
-        { L'\x0100', L'\xFFFF' }
-    };
-
-    template <typename Tsource>
-    const typename PascalScanner<Tsource>::CharRange PascalScanner<Tsource>::p_alphanum[] = {
-        { '_', '_' },
-        { 'A', 'Z' },
-        { 'a', 'z' },
-        { L'\x0100', L'\xFFFF' },
-        { '0', '9' }
-    };
 
     template <typename Tsource>
     const typename PascalScanner<Tsource>::CharRange PascalScanner<Tsource>::p_asmalpha[] = {
