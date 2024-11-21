@@ -127,6 +127,19 @@ namespace k_parser
             return *this;
         }
 
+        constexpr ScannerSourceIterator &operator++() noexcept
+        {
+            p_position++;
+            return *this;
+        }
+
+        constexpr ScannerSourceIterator operator++(int) noexcept
+        {
+            auto result = *this;
+            p_position++;
+            return result;
+        }
+
         // advance internal line counter
         void AdvanceLine()
         {
@@ -300,6 +313,36 @@ namespace k_parser
 
         // construct empty char token
         static constexpr TokenT<const char> C() noexcept { return TokenT<const char>(); }
+    };
+
+
+    // -------------------------------------------------------------------------------
+    //  ScannerToken
+    // -------------------------------------------------------------------------------
+    //
+    //  common scanner token struct
+    //      TT - token type enum (enum class should have None value defined)
+    //
+
+    template <typename TT>
+    struct ScannerToken
+    {
+        ScannerToken() :
+            Type(TT::None),
+            Result(ScanResult::NoMatch)
+        {}
+
+        ScannerToken(TT _type, const SourceToken &_token, ScanResult _result) :
+            Type(_type),
+            SourceToken(_token),
+            Result(_result)
+        {}
+
+        operator bool() const { return Type != TT::None; }
+
+        TT          Type;
+        SourceToken SourceToken;
+        ScanResult  Result;
     };
 
 

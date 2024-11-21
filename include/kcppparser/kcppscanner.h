@@ -27,6 +27,11 @@ namespace k_cppparser
     public:
         CPPScanner(Tsource &source);
 
+        // namespaces are shit
+        using ScannerSourceIterator = k_parser::ScannerSourceIterator;
+        using SourceLength = k_parser::SourceLength;
+        using ScanResult = k_parser::ScanResult;
+
         enum class TokenType
         {
             None,              // token haven't been scanned yet
@@ -51,25 +56,7 @@ namespace k_cppparser
         //      result indicates that
         //      in case of incomplete token scan must be continued with respective mode
         //      caller (typically parser class) should maintain current scan mode
-        struct Token
-        {
-            Token() :
-                Type(TokenType::None),
-                Result(k_parser::ScanResult::NoMatch)
-            {}
-
-            Token(TokenType _type, const k_parser::SourceToken &_token, k_parser::ScanResult _result) :
-                Type(_type),
-                SourceToken(_token),
-                Result(_result)
-            {}
-
-            operator bool() const { return Type != TokenType::None; }
-
-            TokenType             Type;
-            k_parser::SourceToken SourceToken;
-            k_parser::ScanResult  Result;
-        };
+        using Token = k_parser::ScannerToken<TokenType>;
 
         enum class Mode
         {
@@ -85,41 +72,33 @@ namespace k_cppparser
 
     private:
         // inner scans
-        k_parser::SourceLength IsEscape(const k_parser::ScannerSourceIterator &it) const;
+        SourceLength IsEscape(const ScannerSourceIterator &it) const;
 
         // primary scans (will set token type and advance if succeded)
-        void ScanIdent(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanComment(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanString(Token &token, bool preprocessor, k_parser::ScannerSourceIterator &it) const;
-        void ScanPreprocessorString(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanCharacter(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const;
+        void ScanIdent(Token &token, ScannerSourceIterator &it) const;
+        void ScanComment(Token &token, ScannerSourceIterator &it) const;
+        void ScanString(Token &token, bool preprocessor, ScannerSourceIterator &it) const;
+        void ScanPreprocessorString(Token &token, ScannerSourceIterator &it) const;
+        void ScanNumber(Token &token, ScannerSourceIterator &it) const;
+        void ScanCharacter(Token &token, ScannerSourceIterator &it) const;
+        void ScanPreprocessor(Token &token, ScannerSourceIterator &it) const;
 
         // wide string/char helper
-        bool ScanWideStringOrCharacter(Token &token, k_parser::ScannerSourceIterator &it) const;
+        bool ScanWideStringOrCharacter(Token &token, ScannerSourceIterator &it) const;
 
         // comment scan helpers
-        k_parser::ScanResult ScanSingleLineComment(k_parser::ScannerSourceIterator &it) const;
-        k_parser::ScanResult ContinueSingleLineComment(k_parser::ScannerSourceIterator &it) const;
-        k_parser::ScanResult ScanMultiLineComment(k_parser::ScannerSourceIterator &it) const;
+        ScanResult ScanSingleLineComment(ScannerSourceIterator &it) const;
+        ScanResult ContinueSingleLineComment(ScannerSourceIterator &it) const;
+        ScanResult ScanMultiLineComment(ScannerSourceIterator &it) const;
 
         // number scan helpers
-        bool ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const;
-        bool ScanRealPostfix(k_parser::ScannerSourceIterator &it) const;
-        bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanReal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanIntegerPostfix(ScannerSourceIterator &it) const;
+        bool ScanRealPostfix(ScannerSourceIterator &it) const;
+        bool ScanHexadecimal(ScannerSourceIterator &it) const;
+        bool ScanDecimal(ScannerSourceIterator &it) const;
+        bool ScanReal(ScannerSourceIterator &it) const;
 
     private:
-        using TokenChar = k_parser::Token<char>;
-        using CharRange = k_parser::CharRange;
-
-        static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
-        static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
-        static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
-        static const CharRange p_alphanum[5];    // alpha + numeric characters set
-
         static const TokenChar p_hexprefixes[2]; // hexadecimal prefixes
         static const TokenChar p_escapes[9];     // all predefined escape sequences
         static const TokenChar p_compounds[24];  // all compound sequences
@@ -274,7 +253,7 @@ namespace k_cppparser
 
 
     template <typename Tsource>
-    k_parser::SourceLength CPPScanner<Tsource>::IsEscape(const k_parser::ScannerSourceIterator &it) const
+    k_parser::SourceLength CPPScanner<Tsource>::IsEscape(const ScannerSourceIterator &it) const
     {
         auto current = it;
 
@@ -299,7 +278,7 @@ namespace k_cppparser
 
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanIdent(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanIdent(Token &token, ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(p_alpha, p_alphanum, nullptr, it);
         if (Match(result)) {
@@ -315,7 +294,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanComment(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanComment(Token &token, ScannerSourceIterator &it) const
     {
         token.Result = ScanSingleLineComment(it);
         if (Match(token.Result)) {
@@ -330,7 +309,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanString(Token &token, bool preprocessor, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanString(Token &token, bool preprocessor, ScannerSourceIterator &it) const
     {
         token.Result = FromTo(
             C("\""), C("\""), false,
@@ -344,7 +323,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanPreprocessorString(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanPreprocessorString(Token &token, ScannerSourceIterator &it) const
     {
         token.Result = FromTo(C("<"), C(">"), false, nullptr, it);
         if (Match(token.Result)) {
@@ -353,7 +332,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanWideStringOrCharacter(Token &token, k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanWideStringOrCharacter(Token &token, ScannerSourceIterator &it) const
     {
         auto current = it;
 
@@ -376,7 +355,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanNumber(Token &token, ScannerSourceIterator &it) const
     {
         // it is at least some integer number token
         token.Type = TokenType::Number;
@@ -400,14 +379,14 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanCharacter(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanCharacter(Token &token, ScannerSourceIterator &it) const
     {
         token.Result = FromTo(C("'"), C("'"), false, [this](auto &it) { return IsEscape(it); }, it);
         token.Type = TokenType::Character;
     }
 
     template <typename Tsource>
-    void CPPScanner<Tsource>::ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CPPScanner<Tsource>::ScanPreprocessor(Token &token, ScannerSourceIterator &it) const
     {
         token.Result = ScanResult::Match;
 
@@ -422,7 +401,7 @@ namespace k_cppparser
 
 
     template <typename Tsource>
-    k_parser::ScanResult CPPScanner<Tsource>::ScanSingleLineComment(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult CPPScanner<Tsource>::ScanSingleLineComment(ScannerSourceIterator &it) const
     {
         if (NoMatch(Check(C("//"), it))) {
             return ScanResult::NoMatch;
@@ -433,7 +412,7 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    k_parser::ScanResult CPPScanner<Tsource>::ContinueSingleLineComment(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult CPPScanner<Tsource>::ContinueSingleLineComment(ScannerSourceIterator &it) const
     {
         auto start = it;
         auto scan = ContinueToEndOfLine(it);
@@ -460,13 +439,13 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    k_parser::ScanResult CPPScanner<Tsource>::ScanMultiLineComment(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult CPPScanner<Tsource>::ScanMultiLineComment(ScannerSourceIterator &it) const
     {
         return FromTo(C("/*"), C("*/"), true, nullptr, it);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanIntegerPostfix(ScannerSourceIterator &it) const
     {
         auto start = it;
 
@@ -476,13 +455,13 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanRealPostfix(k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanRealPostfix(ScannerSourceIterator &it) const
     {
         return CheckAny(C("fFdD"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanHexadecimal(k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanHexadecimal(ScannerSourceIterator &it) const
     {
         auto result = Match(FromTokenWhile(A(p_hexprefixes), p_hexadecimal, nullptr, false, it));
 
@@ -494,14 +473,14 @@ namespace k_cppparser
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanDecimal(k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanDecimal(ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(p_numeric, p_numeric, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CPPScanner<Tsource>::ScanReal(k_parser::ScannerSourceIterator &it) const
+    bool CPPScanner<Tsource>::ScanReal(ScannerSourceIterator &it) const
     {
         auto result = Match(FromTokenWhile(C("."), p_numeric, nullptr, true, it));
 

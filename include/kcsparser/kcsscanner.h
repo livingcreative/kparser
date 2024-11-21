@@ -24,6 +24,11 @@ namespace k_csparser
     public:
         CSScanner(Tsource &source);
 
+        // namespaces are shit
+        using ScannerSourceIterator = k_parser::ScannerSourceIterator;
+        using SourceLength = k_parser::SourceLength;
+        using ScanResult = k_parser::ScanResult;
+
         enum class TokenType
         {
             None,              // token haven't been scanned yet or scan finished
@@ -44,25 +49,7 @@ namespace k_csparser
             Invalid            // invalid token/character
         };
 
-        struct Token
-        {
-            Token() :
-                Type(TokenType::None),
-                Result(k_parser::ScanResult::NoMatch)
-            {}
-
-            Token(TokenType _type, const k_parser::SourceToken &_token, k_parser::ScanResult _result) :
-                Type(_type),
-                SourceToken(_token),
-                Result(_result)
-            {}
-
-            operator bool() const { return Type != TokenType::None; }
-
-            TokenType             Type;
-            k_parser::SourceToken SourceToken;
-            k_parser::ScanResult  Result;
-        };
+        using Token = k_parser::ScannerToken<TokenType>;
 
         enum class Mode
         {
@@ -76,40 +63,39 @@ namespace k_csparser
         Token ReadToken(Mode mode, bool includespacers = false);
 
     private:
-
         enum EscapeCheckContext
         {
             eccIdentifier,
             eccCharacter
         };
 
-        k_parser::SourceLength IsEscape(EscapeCheckContext context, const k_parser::ScannerSourceIterator &it) const;
-        k_parser::SourceLength ScanInterpolationComment(bool multiline, const k_parser::ScannerSourceIterator &it) const;
-        k_parser::SourceLength InterpolationInnerScan(bool checkcharescape, bool multiline, const k_parser::ScannerSourceIterator &it) const;
+        SourceLength IsEscape(EscapeCheckContext context, const ScannerSourceIterator &it) const;
+        SourceLength ScanInterpolationComment(bool multiline, const ScannerSourceIterator &it) const;
+        SourceLength InterpolationInnerScan(bool checkcharescape, bool multiline, const ScannerSourceIterator &it) const;
 
-        void ScanIdent(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanComment(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanString(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanInterpolatedString(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanVerbatimString(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanCharacter(Token &token, k_parser::ScannerSourceIterator &it) const;
-        void ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const;
-
-        template <typename Tinner>
-        k_parser::ScanResult ScanString(Tinner inner, k_parser::ScannerSourceIterator &it) const;
+        void ScanIdent(Token &token, ScannerSourceIterator &it) const;
+        void ScanComment(Token &token, ScannerSourceIterator &it) const;
+        void ScanString(Token &token, ScannerSourceIterator &it) const;
+        void ScanInterpolatedString(Token &token, ScannerSourceIterator &it) const;
+        void ScanVerbatimString(Token &token, ScannerSourceIterator &it) const;
+        void ScanNumber(Token &token, ScannerSourceIterator &it) const;
+        void ScanCharacter(Token &token, ScannerSourceIterator &it) const;
+        void ScanPreprocessor(Token &token, ScannerSourceIterator &it) const;
 
         template <typename Tinner>
-        k_parser::ScanResult ScanVerbatimString(Tinner inner, k_parser::ScannerSourceIterator &it) const;
+        ScanResult ScanString(Tinner inner, ScannerSourceIterator &it) const;
 
-        bool ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const;
-        bool ScanRealPostfix(k_parser::ScannerSourceIterator &it) const;
-        bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanReal(k_parser::ScannerSourceIterator &it) const;
+        template <typename Tinner>
+        ScanResult ScanVerbatimString(Tinner inner, ScannerSourceIterator &it) const;
+
+        bool ScanIntegerPostfix(ScannerSourceIterator &it) const;
+        bool ScanRealPostfix(ScannerSourceIterator &it) const;
+        bool ScanHexadecimal(ScannerSourceIterator &it) const;
+        bool ScanDecimal(ScannerSourceIterator &it) const;
+        bool ScanReal(ScannerSourceIterator &it) const;
 
     private:
-        using TokenChar = k_parser::Token<char>;
+        using TokenChar = k_parser::TokenT<char>;
         using CharRange = k_parser::CharRange;
 
         static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
@@ -121,7 +107,7 @@ namespace k_csparser
         static const TokenChar p_escapes[9];     // all predefined escape sequences
         static const TokenChar p_compounds[21];  // all compound sequences
 
-        static const TokenChar p_keywords[75];
+        static const TokenChar p_keywords[75];   // all global keywords
     };
 
 
@@ -269,7 +255,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    k_parser::SourceLength CSScanner<Tsource>::IsEscape(EscapeCheckContext context, const k_parser::ScannerSourceIterator &it) const
+    k_parser::SourceLength CSScanner<Tsource>::IsEscape(EscapeCheckContext context, const ScannerSourceIterator &it) const
     {
         auto current = it;
 
@@ -295,7 +281,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    k_parser::SourceLength CSScanner<Tsource>::ScanInterpolationComment(bool multiline, const k_parser::ScannerSourceIterator &it) const
+    k_parser::SourceLength CSScanner<Tsource>::ScanInterpolationComment(bool multiline, const ScannerSourceIterator &it) const
     {
         auto current = it;
         auto result = FromTo(C("/*"), C("*/"), multiline, nullptr, current);
@@ -303,7 +289,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    k_parser::SourceLength CSScanner<Tsource>::InterpolationInnerScan(bool checkcharescape, bool multiline, const k_parser::ScannerSourceIterator &it) const
+    k_parser::SourceLength CSScanner<Tsource>::InterpolationInnerScan(bool checkcharescape, bool multiline, const ScannerSourceIterator &it) const
     {
         if (checkcharescape) {
             auto esc = IsEscape(eccCharacter, it);
@@ -327,7 +313,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanIdent(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanIdent(Token &token, ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(
             p_alpha, p_alphanum,
@@ -347,7 +333,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanComment(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanComment(Token &token, ScannerSourceIterator &it) const
     {
         if (Match(FromToEndOfLine(C("//"), it))) {
             token.Type = TokenType::SingleLineComment;
@@ -364,7 +350,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanString(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanString(Token &token, ScannerSourceIterator &it) const
     {
         auto result = ScanString([this](auto &it) { return IsEscape(eccCharacter, it); }, it);
         if (Match(result)) {
@@ -374,7 +360,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanInterpolatedString(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanInterpolatedString(Token &token, ScannerSourceIterator &it) const
     {
         // interpolated string could be usual double quoted string or
         // @ verbatim string, "eat" $ character and try to scan one of
@@ -404,7 +390,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanNumber(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanNumber(Token &token, ScannerSourceIterator &it) const
     {
         // it is at least some integer number token
         token.Type = TokenType::Number;
@@ -430,14 +416,14 @@ namespace k_csparser
 
     template <typename Tsource>
     template <typename Tinner>
-    k_parser::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult CSScanner<Tsource>::ScanString(Tinner inner, ScannerSourceIterator &it) const
     {
         return FromTo(C("\""), C("\""), false, inner, it);
     }
 
     template <typename Tsource>
     template <typename Tinner>
-    k_parser::ScanResult CSScanner<Tsource>::ScanVerbatimString(Tinner inner, k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult CSScanner<Tsource>::ScanVerbatimString(Tinner inner, ScannerSourceIterator &it) const
     {
         auto result = FromTo(C("@\""), C("\""), true, inner, it);
 
@@ -460,7 +446,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanCharacter(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanCharacter(Token &token, ScannerSourceIterator &it) const
     {
         auto result = FromTo(
             C("'"), C("'"), false, [this](auto &it) { return IsEscape(eccCharacter, it); },
@@ -474,19 +460,19 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanIntegerPostfix(k_parser::ScannerSourceIterator &it) const
+    bool CSScanner<Tsource>::ScanIntegerPostfix(ScannerSourceIterator &it) const
     {
         return CheckAny(C("lLuU"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanRealPostfix(k_parser::ScannerSourceIterator &it) const
+    bool CSScanner<Tsource>::ScanRealPostfix(ScannerSourceIterator &it) const
     {
         return CheckAny(C("fFdDmM"), it) != 0;
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanHexadecimal(k_parser::ScannerSourceIterator &it) const
+    bool CSScanner<Tsource>::ScanHexadecimal(ScannerSourceIterator &it) const
     {
         auto result = Match(FromTokenWhile(A(p_hexprefixes), p_hexadecimal, nullptr, false, it));
 
@@ -498,14 +484,14 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanDecimal(k_parser::ScannerSourceIterator &it) const
+    bool CSScanner<Tsource>::ScanDecimal(ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(p_numeric, p_numeric, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool CSScanner<Tsource>::ScanReal(k_parser::ScannerSourceIterator &it) const
+    bool CSScanner<Tsource>::ScanReal(ScannerSourceIterator &it) const
     {
         auto result = Match(FromTokenWhile(C("."), p_numeric, nullptr, true, it));
 
@@ -526,7 +512,7 @@ namespace k_csparser
     }
 
     template <typename Tsource>
-    void CSScanner<Tsource>::ScanPreprocessor(Token &token, k_parser::ScannerSourceIterator &it) const
+    void CSScanner<Tsource>::ScanPreprocessor(Token &token, ScannerSourceIterator &it) const
     {
         auto result = FromToEndOfLine(C("#"), it);
         if (Match(result)) {
