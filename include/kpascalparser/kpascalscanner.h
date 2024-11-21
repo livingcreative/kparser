@@ -27,6 +27,11 @@ namespace k_pascalparser
     public:
         PascalScanner(Tsource &source);
 
+        // namespaces are shit
+        using ScannerSourceIterator = k_parser::ScannerSourceIterator;
+        using SourceLength = k_parser::SourceLength;
+        using ScanResult = k_parser::ScanResult;
+
         enum class TokenType
         {
             None,         // token haven't been scanned yet
@@ -42,63 +47,34 @@ namespace k_pascalparser
             Invalid       // invalid token/character
         };
 
-        struct Token
-        {
-            Token() :
-                Type(TokenType::None),
-                Result(ScanResult::NoMatch)
-            {}
-
-            Token(TokenType _type, const k_parser::SourceToken &_token) :
-                Type(_type),
-                SourceToken(_token)
-            {}
-
-            operator bool() const { return Type != TokenType::None; }
-
-            TokenType             Type;
-            k_parser::SourceToken SourceToken;
-            k_parser::ScanResult  Result;
-        };
-
-        enum class IncrementalCurrentType
-        {
-            None,
-            MultilineComment,
-            MultilineOldStyleComment,
-            MultilineDirective,
-            MultilineOldStyleDirective
-        };
+        using Token = k_parser::ScannerToken<TokenType>;
 
         enum class Mode
         {
-            Pascal,
+            Source,
+            Comment,
+            Directive,
+            OldStyleComment,
+            OldStyleDirective,
             Assembler
         };
 
-        Token ReadToken(bool includespacers);
-        Token ReadToken(bool includespacers, k_parser::IncrementalScanData &data);
+        Token ReadToken(Mode mode, bool includespacers = false);
 
     private:
-        Token ScanToken(Mode mode, k_parser::IncrementalScanData &data);
-
-        bool ScanIdent(k_parser::ScannerSourceIterator &it) const;
-        bool ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
-        bool ScanDirective(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const;
-        k_parser::ScanResult ScanString(k_parser::ScannerSourceIterator &it) const;
-        k_parser::ScanResult ScanDQString(k_parser::ScannerSourceIterator &it) const;
-        bool ScanHexadecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanDecimal(k_parser::ScannerSourceIterator &it) const;
-        bool ScanReal(k_parser::ScannerSourceIterator &it) const;
+        bool ScanIdent(ScannerSourceIterator &it) const;
+        bool ScanComment(Token &token, ScannerSourceIterator &it) const;
+        bool ScanDirective(Token &token, ScannerSourceIterator &it) const;
+        k_parser::ScanResult ScanString(ScannerSourceIterator &it) const;
+        k_parser::ScanResult ScanDQString(ScannerSourceIterator &it) const;
+        bool ScanHexadecimal(ScannerSourceIterator &it) const;
+        bool ScanDecimal(ScannerSourceIterator &it) const;
+        bool ScanReal(ScannerSourceIterator &it) const;
 
     private:
-        typedef k_parser::Token<char> TokenChar;
-        typedef k_parser::CharRange CharRange;
+        using TokenChar = k_parser::TokenT<char>;
+        using CharRange = k_parser::CharRange;
 
-        static const CharRange p_numeric[1];     // numeric [0 - 9] characters set
-        static const CharRange p_hexadecimal[3]; // hexadecimal [0 - 9, A - F, a - f] characters set
-        static const CharRange p_alpha[4];       // alpha characters set (not exact, unicode range needs refinement)
-        static const CharRange p_alphanum[5];    // alpha + numeric characters set
         static const CharRange p_asmalpha[5];    // inline assembler alpha characters set (not exact, unicode range needs refinement)
         static const CharRange p_asmalphanum[6]; // inline assembler alpha + numeric characters set
 
@@ -151,68 +127,49 @@ namespace k_pascalparser
     {}
 
     template <typename Tsource>
-    typename PascalScanner<Tsource>::Token PascalScanner<Tsource>::ReadToken(bool includespacers)
-    {
-        IncrementalScanData data;
-        return ReadToken(includespacers, data);
-    }
-
-    template <typename Tsource>
-    typename PascalScanner<Tsource>::Token PascalScanner<Tsource>::ReadToken(bool includespacers, k_parser::IncrementalScanData &data)
+    typename PascalScanner<Tsource>::Token PascalScanner<Tsource>::ReadToken(Mode mode, bool includespacers)
     {
         auto it = It();
 
-        if (SkipToToken(it)) {
-            if (includespacers && PeekToken(it)) {
-                return Token(TokenType::Spacer, Scanner::ReadToken(it));
-            } else {
-                DiscardToken(it);
-                return ScanToken(Mode::Pascal, data);
-            }
+        if (it) {
+            return Token();
         }
 
-        DiscardToken(it);
-        return Token();
-    }
+        switch (mode) {
+            case Mode::Comment:
+            case Mode::Directive: {
+                auto result = ContinueTo(C("}"), true, nullptr, it);
+                return Token(
+                    mode == Mode::Comment ? TokenType::Comment : TokenType::Directive,
+                    Scanner::ReadToken(it), result
+                );
+            }
 
-    template <typename Tsource>
-    typename PascalScanner<Tsource>::Token PascalScanner<Tsource>::ScanToken(Mode mode, k_parser::IncrementalScanData &data)
-    {
-        Token token;
-        auto it = It();
+            case Mode::OldStyleComment:
+            case Mode::OldStyleDirective: {
+                auto result = ContinueTo(C("*)"), true, nullptr, it);
+                return Token(
+                    mode == Mode::OldStyleComment ? TokenType::Comment : TokenType::Directive,
+                    Scanner::ReadToken(it), result
+                );
+            }
 
-        if (data.Current != int(IncrementalCurrentType::None)) {
-            switch (data.Current) {
-                case IncrementalCurrentType::MultilineComment:
-                case IncrementalCurrentType::MultilineOldStyleComment:
-                case IncrementalCurrentType::MultilineDirective:
-                case IncrementalCurrentType::MultilineOldStyleDirective: {
-                    token.Type =
-                        data.Current == int(IncrementalCurrentType::MultilineComment) ||
-                        data.Current == int(IncrementalCurrentType::MultilineOldStyleComment) ?
-                        TokenType::Comment : TokenType::Directive;
+            default: {
+                auto hastoken = SkipToToken(it, true);
 
-                    auto endseq =
-                        data.Current == int(IncrementalCurrentType::MultilineComment) ||
-                        data.Current == int(IncrementalCurrentType::MultilineDirective) ?
-                        C("}") : C("*)");
+                if (includespacers && PeekToken(it)) {
+                    return Token(TokenType::Spacer, Scanner::ReadToken(it), ScanResult::Match);
+                }
 
-                    auto result = ContinueTo(endseq, true, nullptr, it);
+                DiscardToken(it);
 
-                    if (result != ScanResult::MatchTrimmedEOF) {
-                        data.Current = int(IncrementalCurrentType::None);
-                    }
-
-                    break;
+                if (!hastoken) {
+                    return Token();
                 }
             }
-
-            token.SourceToken = Scanner::ReadToken(it);
-
-            return token;
         }
 
-        token.Type = TokenType::None;
+        Token token;
         auto c = CharCurrent();
 
         // identifier starts with following characters, so it's most
@@ -233,21 +190,18 @@ namespace k_pascalparser
         // character, so try scan a comment when / encountered
         else if (c == '/' || c == '{' || c == '(')
         {
-            if (ScanComment(data, it)) {
-                token.Type = TokenType::Comment;
-            } else if (ScanDirective(data, it)) {
-                token.Type = TokenType::Directive;
-            } else {
+            if (!ScanComment(token, it) && !ScanDirective(token, it)) {
                 CheckAny(C("/{("), it);
                 token.Type = TokenType::Symbol;
+                token.Result = ScanResult::Match;
             }
         }
         // from this character string literal can start
         // try scan string
         else if (c == '\'' || c == '#')
         {
-            auto isstr = ScanString(it);
-            if (Match(isstr)) {
+            token.Result = ScanString(it);
+            if (Match(token.Result)) {
                 token.Type = TokenType::String;
             }
         }
@@ -309,39 +263,44 @@ namespace k_pascalparser
     }
 
     template <typename Tsource>
-    bool PascalScanner<Tsource>::ScanComment(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const
+    bool PascalScanner<Tsource>::ScanComment(Token &token, ScannerSourceIterator &it) const
     {
-        auto result = FromTo(C("{"), C("}"), true, nullptr, it);
-        if (Match(result)) {
-            if (result == ScanResult::MatchTrimmedEOF) {
-                data.Current = int(IncrementalCurrentType::MultilineComment);
-            }
+        token.Result = FromTo(C("{"), C("}"), true, nullptr, it);
+        if (Match(token.Result)) {
+            token.Type = TokenType::Comment;
             return true;
         }
 
-        result = FromTo(C("(*"), C("*)"), true, nullptr, it);
-        if (Match(result)) {
-            if (result == ScanResult::MatchTrimmedEOF) {
-                data.Current = int(IncrementalCurrentType::MultilineOldStyleComment);
-            }
+        token.Result = FromTo(C("(*"), C("*)"), true, nullptr, it);
+        if (Match(token.Result)) {
+            token.Type = TokenType::Comment;
             return true;
         }
 
-        return Match(FromToEndOfLine(C("//"), it));
+        if (Match(FromToEndOfLine(C("//"), it))) {
+            token.Type = TokenType::Comment;
+            token.Result = ScanResult::Match;
+            return true;
+        }
+
+        return false;
     }
 
     template <typename Tsource>
-    bool PascalScanner<Tsource>::ScanDirective(k_parser::IncrementalScanData &data, k_parser::ScannerSourceIterator &it) const
+    bool PascalScanner<Tsource>::ScanDirective(Token &token, ScannerSourceIterator &it) const
     {
         // TODO: incremental
         auto result =
             Match(FromTo(C("{$"), C("}"), false, nullptr, it)) ||
             Match(FromTo(C("(*$"), C("*)"), false, nullptr, it));
+        if (result) {
+            token.Type = TokenType::Directive;
+        }
         return result;
     }
 
     template <typename Tsource>
-    k_parser::ScanResult PascalScanner<Tsource>::ScanString(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult PascalScanner<Tsource>::ScanString(ScannerSourceIterator &it) const
     {
         auto start = it;
         bool a, b;
@@ -359,27 +318,27 @@ namespace k_pascalparser
     }
 
     template <typename Tsource>
-    k_parser::ScanResult PascalScanner<Tsource>::ScanDQString(k_parser::ScannerSourceIterator &it) const
+    k_parser::ScanResult PascalScanner<Tsource>::ScanDQString(ScannerSourceIterator &it) const
     {
         return FromTo(C("\""), C("\""), false, nullptr, it);
     }
 
     template <typename Tsource>
-    bool PascalScanner<Tsource>::ScanHexadecimal(k_parser::ScannerSourceIterator &it) const
+    bool PascalScanner<Tsource>::ScanHexadecimal(ScannerSourceIterator &it) const
     {
         auto result = FromTokenWhile(C("$"), p_hexadecimal, nullptr, false, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool PascalScanner<Tsource>::ScanDecimal(k_parser::ScannerSourceIterator &it) const
+    bool PascalScanner<Tsource>::ScanDecimal(ScannerSourceIterator &it) const
     {
         auto result = FromSetWhile(p_numeric, p_numeric, nullptr, it);
         return Match(result);
     }
 
     template <typename Tsource>
-    bool PascalScanner<Tsource>::ScanReal(k_parser::ScannerSourceIterator &it) const
+    bool PascalScanner<Tsource>::ScanReal(ScannerSourceIterator &it) const
     {
         auto result = FromTokenWhile(C("."), p_numeric, nullptr, true, it);
 
