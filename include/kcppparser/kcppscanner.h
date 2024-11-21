@@ -45,8 +45,6 @@ namespace k_cppparser
             MultiLineComment,  // multi line comment  /* ... */
             Symbol,            // any standalone character or compound sequence
             Preprocessor,      // preprocessor token (# sign which start preprocessor line)
-            PreprocessorHash,  // preprocessor hash (stringify, #), valid inside preprocessor mode
-            PreprocessorPaste, // preprocessor paste (##), valid inside preprocessor mode
             Spacer,            // sequence of spaces/line breaks
             Invalid            // invalid token/character
         };
@@ -58,14 +56,18 @@ namespace k_cppparser
         //      caller (typically parser class) should maintain current scan mode
         using Token = k_parser::ScannerToken<TokenType>;
 
+        // TODO: modes should make sence only for scanner itself
+        //       currently some of these modes are actually parser state
         enum class Mode
         {
-            Source,              // regular source mode
-            SingleLineComment,   // single line comment mode
-            MultiLineComment,    // multiline comment mode
-            Preprocessor,        // regular preprocessor mode
-            PreprocessorInclude, // preprocessor include directive
-            Assembler            // inline assembly
+            Source,                  // regular source mode
+            SingleLineComment,       // single line comment mode
+            MultiLineComment,        // multiline comment mode
+            PreprocessorDirective,   // preprocessor directive mode (same as regular)
+            Preprocessor,            // regular preprocessor mode (regular + #/## tokens)
+            PreprocessorInclude,     // preprocessor include directive (regular with special strings)
+            PreprocessorTermination, // preprocessor termination mode (regular)
+            Assembler                // inline assembly
         };
 
         Token ReadToken(Mode mode, bool includespacers = false);
@@ -167,7 +169,10 @@ namespace k_cppparser
             c >= L'\x0100')
         {
             // L can start "wide" string/character, try it first
-            if (c != 'L' || !ScanWideStringOrCharacter(token, it)) {
+            auto trywidestring =
+                c == 'L' && mode != Mode::PreprocessorInclude;
+
+            if (!trywidestring || !ScanWideStringOrCharacter(token, it)) {
                 ScanIdent(token, it);
             }
         }
@@ -215,13 +220,14 @@ namespace k_cppparser
                     break;
 
                 case Mode::Source:
+                case Mode::PreprocessorDirective:
                     GetCharToken(it);
                     token.Type = TokenType::Preprocessor;
                     token.Result = ScanResult::Match;
                     break;
             }
         }
-        else if (c == '\\' && (mode == Mode::Preprocessor || mode == Mode::PreprocessorInclude))
+        else if (c == '\\' && (mode >= Mode::PreprocessorDirective || mode <= Mode::PreprocessorTermination))
         {
             GetCharToken(it);
             token.Type = TokenType::Symbol;
@@ -389,14 +395,13 @@ namespace k_cppparser
     void CPPScanner<Tsource>::ScanPreprocessor(Token &token, ScannerSourceIterator &it) const
     {
         token.Result = ScanResult::Match;
+        token.Type = TokenType::Preprocessor;
 
         if (Check(C("##"), it)) {
-            token.Type = TokenType::PreprocessorPaste;
             return;
         }
 
         GetCharToken(it);
-        token.Type = TokenType::PreprocessorHash;
      }
 
 
