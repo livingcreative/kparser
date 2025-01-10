@@ -120,10 +120,31 @@ namespace k_parser
             return p_position - rhs.p_position;
         }
 
+        // moving without mutation
+        constexpr ScannerSourceIterator operator+(SourceLength advance) const noexcept
+        {
+            auto result = *this;
+            result.p_position += advance;
+            return result;
+        }
+
+        constexpr ScannerSourceIterator operator-(SourceLength advance) const noexcept
+        {
+            auto result = *this;
+            result.p_position -= advance;
+            return result;
+        }
+
         // mutate given iterator by advance
         constexpr ScannerSourceIterator &operator+=(SourceLength advance) noexcept
         {
             p_position += advance;
+            return *this;
+        }
+
+        constexpr ScannerSourceIterator &operator-=(SourceLength advance) noexcept
+        {
+            p_position -= advance;
             return *this;
         }
 
@@ -145,6 +166,37 @@ namespace k_parser
         {
             p_linestart = p_position;
             ++p_line;
+        }
+
+        // comparison
+        constexpr bool operator==(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position == rhs.p_position;
+        }
+
+        constexpr bool operator!=(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position != rhs.p_position;
+        }
+
+        constexpr bool operator<=(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position <= rhs.p_position;
+        }
+
+        constexpr bool operator>=(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position >= rhs.p_position;
+        }
+
+        constexpr bool operator<(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position < rhs.p_position;
+        }
+
+        constexpr bool operator>(const ScannerSourceIterator &rhs) const noexcept
+        {
+            return p_position > rhs.p_position;
         }
 
         // current position inside source text
