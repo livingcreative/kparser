@@ -1405,7 +1405,7 @@ namespace k_parser
 
         while (GetCharToken(it)) {}
 
-        return start - it;
+        return it - start;
     }
 
     template <typename Tsource, typename Tchecker>
