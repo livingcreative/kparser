@@ -300,6 +300,7 @@ namespace k_parser
     {
         NoMatch,         // no match
         Match,           // full match
+        MatchTrimmedBrk, // partial match, trimmed by break condition or nested sequence
         MatchTrimmedEOL, // partial match, terminated by line end
         MatchTrimmedEOF  // partial match, terminated by end of source
                          //     this might be also end of the currently parsed part of
@@ -648,7 +649,7 @@ namespace k_parser
         template <typename T, typename Tinner>
         ScanResult ContinueTo(
             const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline,
-            Tinner inner, ScannerSourceIterator &it,
+            bool breakonnesting, Tinner inner, ScannerSourceIterator &it,
             int &nestinglevel
         ) const noexcept;
 
@@ -707,7 +708,7 @@ namespace k_parser
         template <typename T, typename Tinner>
         ScanResult FromToWithNesting(
             const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline,
-            Tinner inner, int &nesting, ScannerSourceIterator &it
+            bool breakonnesting, Tinner inner, int &nesting, ScannerSourceIterator &it
         ) const noexcept;
 
         // skip line break if any and advance given iterator
@@ -1296,19 +1297,28 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T, typename Tinner>
-    ScanResult Scanner<Tsource, Tchecker>::ContinueTo(const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline, Tinner inner, ScannerSourceIterator &it, int &nestinglevel) const noexcept
+    ScanResult Scanner<Tsource, Tchecker>::ContinueTo(const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline, bool breakonnesting, Tinner inner, ScannerSourceIterator &it, int &nestinglevel) const noexcept
     {
         // can't use continue to with nesting level equal to 0
         // because at least one match should be set via fromtoken match out of from* checks
         assert(nestinglevel > 0);
 
         auto result = ScanResult::NoMatch;
+        auto start = it;
 
         while (auto adv = GetCharToken(multiline, inner, it, false)) {
             // increment nesting level every time fromtoken is matched inside the sequence
-            if (Check(fromtoken, it)) {
-                ++nestinglevel;
-                continue;
+            if (Check(fromtoken, it, !breakonnesting)) {
+                if (!breakonnesting) {
+                    ++nestinglevel;
+                    continue;
+                }
+
+                if (it > start) {
+                    ++nestinglevel;
+                    result = ScanResult::MatchTrimmedBrk;
+                    break;
+                }
             }
 
             // decrement nesting level every time to token is matched, break on reaching 0 level
@@ -1321,6 +1331,11 @@ namespace k_parser
                     break;
                 }
 
+                if (breakonnesting) {
+                    result = ScanResult::MatchTrimmedBrk;
+                    break;
+                }
+
                 continue;
             }
 
@@ -1329,7 +1344,7 @@ namespace k_parser
         }
 
         // refine no match result
-        if (result != ScanResult::Match) {
+        if (result == ScanResult::NoMatch) {
             result = it ? ScanResult::MatchTrimmedEOF : ScanResult::MatchTrimmedEOL;
         }
 
@@ -1432,14 +1447,14 @@ namespace k_parser
 
     template <typename Tsource, typename Tchecker>
     template <typename T, typename Tinner>
-    ScanResult Scanner<Tsource, Tchecker>::FromToWithNesting(const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline, Tinner inner, int &nesting, ScannerSourceIterator &it) const noexcept
+    ScanResult Scanner<Tsource, Tchecker>::FromToWithNesting(const TokenT<T> &fromtoken, const TokenT<T> &totoken, bool multiline, bool breakonnesting, Tinner inner, int &nesting, ScannerSourceIterator &it) const noexcept
     {
         if (!Check(fromtoken, it)) {
             return ScanResult::NoMatch;
         }
 
         nesting = 1;
-        return ContinueTo(fromtoken, totoken, multiline, inner, it, nesting);
+        return ContinueTo(fromtoken, totoken, multiline, breakonnesting, inner, it, nesting);
     }
 
     template <typename Tsource, typename Tchecker>
