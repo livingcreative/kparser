@@ -449,6 +449,12 @@ namespace k_parser
             return count <= (p_source.length() - it.position());
         }
 
+        // returns how many chars are left to scan
+        constexpr SourceLength CharactersLeft(const ScannerSourceIterator &it) const noexcept
+        {
+            return p_source.length() - it.position();
+        }
+
         // checks from ScannerSpecialCharChecker (checks at current position)
         constexpr bool IsSpace(const ScannerSourceIterator &it) const noexcept { return Tchecker::IsSpace(p_source, it); }
         constexpr SourceLength IsBreak(const ScannerSourceIterator &it) const noexcept { return Tchecker::IsBreak(p_source, it); }
@@ -518,6 +524,17 @@ namespace k_parser
             }
             return advanceby;
         }
+
+        // "eat" versions - just skipping by advancing it
+        constexpr SourceLength Eat(SourceLength count, ScannerSourceIterator &it) const noexcept;
+
+        template <typename Tinner>
+        constexpr SourceLength Eat(SourceLength count, Tinner inner, ScannerSourceIterator &it) const noexcept;
+
+        constexpr SourceLength EatTillLineBreak(SourceLength count, ScannerSourceIterator &it) const noexcept;
+
+        template <typename Tinner>
+        constexpr SourceLength EatTillLineBreak(SourceLength count, Tinner inner, ScannerSourceIterator &it) const noexcept;
 
         // check that there's a match of a character or sequence at "it" position
         //      return 0 if none, length of the match if match found
@@ -1005,6 +1022,71 @@ namespace k_parser
         }
 
         return NO_MATCH;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::Eat(SourceLength count, ScannerSourceIterator &it) const noexcept
+    {
+        auto left = CharactersLeft(it);
+        if (count > left) {
+            count = left;
+        }
+        it += count;
+        return count;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename Tinner>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::Eat(SourceLength count, Tinner inner, ScannerSourceIterator &it) const noexcept
+    {
+        auto left = count;
+        while (left > 0) {
+            auto len = caller<Tinner>::call(inner, it);
+            if (len == 0) {
+                len = 1;
+            }
+            left -= len;
+        }
+        return count - left;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::EatTillLineBreak(SourceLength count, ScannerSourceIterator &it) const noexcept
+    {
+        auto left = CharactersLeft(it);
+        if (count < left) {
+            left = count;
+        }
+        while (left > 0) {
+            auto len = Tchecker::IsBreak(p_source, it);
+            if (len > 0) {
+                break;
+            }
+            left -= 1;
+        }
+        return count - left;
+    }
+
+    template <typename Tsource, typename Tchecker>
+    template <typename Tinner>
+    constexpr SourceLength Scanner<Tsource, Tchecker>::EatTillLineBreak(SourceLength count, Tinner inner, ScannerSourceIterator &it) const noexcept
+    {
+        auto left = CharactersLeft(it);
+        if (count < left) {
+            left = count;
+        }
+        while (left > 0) {
+            auto len = Tchecker::IsBreak(p_source, it);
+            if (len > 0) {
+                break;
+            }
+            len = caller<Tinner>::call(inner, it);
+            if (len == 0) {
+                len = 1;
+            }
+            left -= len;
+        }
+        return count - left;
     }
 
     template <typename Tsource, typename Tchecker>
