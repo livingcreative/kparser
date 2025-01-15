@@ -380,18 +380,18 @@ namespace k_parser
     template <typename TT>
     struct ScannerToken
     {
-        ScannerToken() :
+        constexpr ScannerToken() noexcept :
             Type(TT::None),
             Result(ScanResult::NoMatch)
         {}
 
-        ScannerToken(TT _type, const SourceToken &_token, ScanResult _result) :
+        constexpr ScannerToken(TT _type, const SourceToken &_token, ScanResult _result) noexcept :
             Type(_type),
             SourceToken(_token),
             Result(_result)
         {}
 
-        operator bool() const { return Type != TT::None; }
+        constexpr operator bool() const noexcept { return Type != TT::None; }
 
         TT          Type;
         SourceToken SourceToken;
@@ -745,7 +745,7 @@ namespace k_parser
             return result;
         }
 
-        // advance current iterator to the given one without return anything
+        // advance current iterator to the given one without returning anything
         constexpr void DiscardToken(const ScannerSourceIterator &b) noexcept
         {
             p_it = b;
@@ -1363,9 +1363,7 @@ namespace k_parser
         }
 
         // continue while
-        ContinueWhile(whileset, inner, it);
-
-        return it - start;
+        return ContinueWhile(whileset, inner, it);
     }
 
     template <typename Tsource, typename Tchecker>
