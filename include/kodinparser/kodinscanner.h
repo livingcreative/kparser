@@ -44,7 +44,8 @@ namespace k_odinparser
             SingleLineComment, // single line comment // ...
             MultiLineComment,  // multi line comment  /* ... */
             Symbol,            // any standalone character or compound sequence
-            Directive,         // # directive
+            Tag,               // # tag
+            FileTag,           // #+ tags
             Spacer,            // sequence of spaces/line breaks
             Invalid            // invalid token/character
         };
@@ -61,6 +62,7 @@ namespace k_odinparser
         enum class Mode
         {
             Source,                  // regular source mode
+            FileTag,                 // file tag line
             MultiLineComment,        // multiline comment mode
             Assembler                // inline assembly
         };
@@ -73,12 +75,13 @@ namespace k_odinparser
 
         // primary scans (will set token type and advance if succeded)
         void ScanIdent(Token &token, ScannerSourceIterator &it) const;
+        bool ScanFileTagIdent(Token &token, ScannerSourceIterator &it) const;
         void ScanComment(Token &token, ScannerSourceIterator &it, int &nesting) const;
         void ScanString(Token &token, ScannerSourceIterator &it) const;
         void ScanRawString(Token &token, ScannerSourceIterator &it) const;
         void ScanNumber(Token &token, ScannerSourceIterator &it) const;
         void ScanCharacter(Token &token, ScannerSourceIterator &it) const;
-        void ScanDirective(Token &token, ScannerSourceIterator &it) const;
+        void ScanTag(Token &token, ScannerSourceIterator &it) const;
 
         // comment scan helpers
         ScanResult ScanSingleLineComment(ScannerSourceIterator &it) const;
@@ -91,6 +94,8 @@ namespace k_odinparser
         bool ScanReal(ScannerSourceIterator &it) const;
 
     private:
+        static const CharRange p_alphanumhyphen[6]; // file tag ident charset
+
         static const TokenChar p_hexprefixes[6]; // hexadecimal prefixes
         static const TokenChar p_escapes[9];     // all predefined escape sequences
         static const TokenChar p_compounds[27];  // all compound sequences
@@ -112,11 +117,55 @@ namespace k_odinparser
 
         // check if source ended and return empty token
         if (it) {
-            return Token();
+            return {};
         }
 
         // continue to scan trimmed comments or skip to next token depending on mode
         switch (mode) {
+            case Mode::FileTag: {
+                // regular skip to next token breaking on new line
+                auto hastoken = SkipToToken(it, false);
+
+                if (includespacers && PeekToken(it)) {
+                    return { TokenType::Spacer, Scanner::ReadToken(it), ScanResult::Match };
+                }
+
+                DiscardToken(it);
+
+                if (it) {
+                    return Token();
+                }
+
+                auto c = CharCurrent();
+
+                // go back to normal mode scan as comments or line breaks
+                // interrupt tag seqence
+                if (c == '/' || IsBreak(it)) {
+                    break;
+                }
+
+                if (c == '!') {
+                    Eat(1, it);
+                    return { TokenType::Symbol, Scanner::ReadToken(it), ScanResult::Match };
+                }
+
+                Token token;
+
+                if (c == '#') {
+                    ScanTag(token, it);
+                    token.SourceToken = Scanner::ReadToken(it);
+                    return token;
+                }
+
+                if (ScanFileTagIdent(token, it)) {
+                    token.SourceToken = Scanner::ReadToken(it);
+                    return token;
+                }
+
+                Eat(1, it);
+                return { TokenType::Invalid, Scanner::ReadToken(it), ScanResult::Match };
+            }
+
             case Mode::MultiLineComment: {
                 // this scan can not fail in any case, however can be still trimmed
                 //      NOTE: multiline can be set to false to return trimmed comments line by line
@@ -190,7 +239,7 @@ namespace k_odinparser
         }
         else if (c == '#')
         {
-            ScanDirective(token, it);
+            ScanTag(token, it);
         }
 
         // if none of previous checks detected any kind of token
@@ -256,6 +305,24 @@ namespace k_odinparser
 
             token.Result = ScanResult::Match;
         }
+    }
+
+    template <typename Tsource>
+    bool OdinScanner<Tsource>::ScanFileTagIdent(Token &token, ScannerSourceIterator &it) const
+    {
+        auto result = FromSetWhile(p_alpha, p_alphanumhyphen, nullptr, it);
+        if (Match(result)) {
+            token.Type = TokenType::Identifier;
+
+            // TODO check known tags
+            //if (TokenCheckAny(PeekToken(it), A(p_keywords)) != NO_MATCH) {
+            //    token.Type = TokenType::Keyword;
+            //}
+
+            token.Result = ScanResult::Match;
+            return true;
+        }
+        return false;
     }
 
     template <typename Tsource>
@@ -325,13 +392,18 @@ namespace k_odinparser
     }
 
     template <typename Tsource>
-    void OdinScanner<Tsource>::ScanDirective(Token &token, ScannerSourceIterator &it) const
+    void OdinScanner<Tsource>::ScanTag(Token &token, ScannerSourceIterator &it) const
     {
         Eat(1, it);
-        Check('+', it);
-        FromSetWhile(p_alpha, p_alphanum, nullptr, it);
-        token.Result = ScanResult::Match;
-        token.Type = TokenType::Directive;
+        if (Check('+', it)) {
+            FromSetWhile(p_alpha, p_alphanum, nullptr, it);
+            token.Result = ScanResult::Match;
+            token.Type = TokenType::FileTag;
+        } else {
+            FromSetWhile(p_alpha, p_alphanum, nullptr, it);
+            token.Result = ScanResult::Match;
+            token.Type = TokenType::Tag;
+        }
     }
 
     template <typename Tsource>
@@ -390,6 +462,15 @@ namespace k_odinparser
         return result;
     }
 
+    template <typename Tsource>
+    const k_parser::CharRange OdinScanner<Tsource>::p_alphanumhyphen[] = {
+        { '_', '_' },
+        { 'A', 'Z' },
+        { 'a', 'z' },
+        { '-', '-' },
+        { L'\x0100', L'\xFFFF' },
+        { '0', '9' }
+    };
 
     template <typename Tsource>
     const typename OdinScanner<Tsource>::TokenChar OdinScanner<Tsource>::p_hexprefixes[] = {
