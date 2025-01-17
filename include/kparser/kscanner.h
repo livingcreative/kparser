@@ -1363,7 +1363,9 @@ namespace k_parser
         }
 
         // continue while
-        return ContinueWhile(whileset, inner, it);
+        ContinueWhile(whileset, inner, it);
+
+        return it - start;
     }
 
     template <typename Tsource, typename Tchecker>
